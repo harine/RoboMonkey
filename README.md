@@ -2,7 +2,7 @@
 <div align="center">
     <img src="assets/banner.png" height=100 alt="Cartridges logo"/>
 
-**Scaling Test-Time Sampling and Verification for Vision-Language-Action Models**
+**Scaling Test-Time Sampling and Verification for Vision-Language-Action Models** 
 
 
 
