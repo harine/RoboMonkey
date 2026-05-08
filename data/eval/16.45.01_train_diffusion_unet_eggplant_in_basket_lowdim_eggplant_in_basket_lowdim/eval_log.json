@@ -1,0 +1,14 @@
+{
+  "checkpoint": "/home/harine/diffusion_policy/data/outputs/2026.04.29/16.45.01_train_diffusion_unet_eggplant_in_basket_lowdim_eggplant_in_basket_lowdim/checkpoints/latest.ckpt",
+  "instruction": "put eggplant into yellow basket",
+  "max_steps": 120,
+  "mean_episode_time_s": 11.630127372741699,
+  "num_episodes": 100,
+  "num_successes": 37,
+  "num_truncated": 63,
+  "start_seed": 1000,
+  "success_rate": 0.37,
+  "task": "widowx_put_eggplant_in_basket",
+  "total_time_s": 1163.0243203639984,
+  "use_ema": true
+}

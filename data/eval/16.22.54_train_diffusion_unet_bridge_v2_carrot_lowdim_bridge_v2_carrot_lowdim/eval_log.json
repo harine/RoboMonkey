@@ -1,0 +1,14 @@
+{
+  "checkpoint": "/home/harine/diffusion_policy/data/outputs/2026.04.28/16.22.54_train_diffusion_unet_bridge_v2_carrot_lowdim_bridge_v2_carrot_lowdim/checkpoints/latest.ckpt",
+  "instruction": "put carrot on plate",
+  "max_steps": 120,
+  "mean_episode_time_s": 3.3330679178237914,
+  "num_episodes": 100,
+  "num_successes": 0,
+  "num_truncated": 100,
+  "start_seed": 1000,
+  "success_rate": 0.0,
+  "task": "widowx_carrot_on_plate",
+  "total_time_s": 333.31619024276733,
+  "use_ema": true
+}

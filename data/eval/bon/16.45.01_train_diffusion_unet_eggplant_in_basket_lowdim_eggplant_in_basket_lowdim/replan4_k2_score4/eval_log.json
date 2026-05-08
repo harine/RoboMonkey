@@ -1,0 +1,18 @@
+{
+  "bon_k": 2,
+  "bon_replan_every_n_steps": 4,
+  "bon_score_num_actions": 4,
+  "checkpoint": "/home/harine/diffusion_policy/data/outputs/2026.04.29/16.45.01_train_diffusion_unet_eggplant_in_basket_lowdim_eggplant_in_basket_lowdim/checkpoints/latest.ckpt",
+  "instruction": "put eggplant into yellow basket",
+  "max_steps": 120,
+  "mean_episode_time_s": 28.655296306610108,
+  "num_episodes": 50,
+  "num_successes": 20,
+  "num_truncated": 30,
+  "reward_server_port": 3100,
+  "start_seed": 1000,
+  "success_rate": 0.4,
+  "task": "widowx_put_eggplant_in_basket",
+  "total_time_s": 1432.7694890499115,
+  "use_ema": true
+}
