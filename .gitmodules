@@ -3,7 +3,9 @@
 	url = https://github.com/simpler-env/SimplerEnv
 [submodule "sglang-vla"]
 	path = sglang-vla
-	url = https://github.com/robomonkey-vla/sglang-vla.git
+	url = https://github.com/harine/sglang-vla.git
+	branch = main-harine
 [submodule "openvla-mini"]
 	path = openvla-mini
-	url = https://github.com/robomonkey-vla/openvla-mini.git
+	url = https://github.com/harine/openvla-mini.git
+	branch = main-harine
