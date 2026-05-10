@@ -1,8 +1,11 @@
 """Plot dataset-level diagnostics for a filtered Bridge V2 LeRobot subset.
 
-Mirrors the structure of ``scripts/zarr_dataset_dashboard.py`` (which targets
-collected SIMPLER rollouts) but operates on the LeRobot v2.0 layout produced by
-``scriptsv2/filter_bridge_v2.py``.
+This is the *pre-conversion* preview: it reads the raw LeRobot v2.0 layout
+(parquet + mp4) produced by ``scriptsv2/bridge_to_zarr/filter_bridge_v2.py``
+without going through ``bridge_to_zarr.py`` first. Useful for inspecting
+camera frames and per-step traces before committing to a zarr conversion.
+
+After conversion, ``scriptsv2/plot_zarr/plot_zarr.py`` is the canonical plotter.
 
 Two figures are produced:
   * ``<out_dir>/<tag>_start_positions.png`` -- end-effector start state per episode
@@ -448,7 +451,7 @@ def main() -> int:
     if not info_path.exists() or not episodes_path.exists():
         sys.exit(
             f"Missing meta files in {data_dir}/meta. "
-            "Run scriptsv2/filter_bridge_v2.py first."
+            "Run scriptsv2/bridge_to_zarr/filter_bridge_v2.py first."
         )
     info = json.loads(info_path.read_text())
     chunk_size = int(info.get("chunks_size", CHUNK_SIZE_DEFAULT))

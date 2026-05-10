@@ -1,8 +1,9 @@
 """
-analyze_action_variance.py
+analyze_variance.py
 
 Measure the action variance/uncertainty produced by a diffusion_policy
-checkpoint on the `widowx_put_eggplant_in_basket` task.
+checkpoint on the `widowx_put_eggplant_in_basket` task. Run via the
+``analyze_variance.sh`` wrapper to compare both architectures side-by-side.
 
 Two complementary measurements are made depending on architecture:
 
@@ -27,19 +28,12 @@ Output
 
 Usage
 -----
-  python scriptsv2/analyze_action_variance.py \\
-      --checkpoint /home/harine/diffusion_policy/data/outputs/2026.04.29/\\
-16.45.01_train_diffusion_unet_eggplant_in_basket_lowdim_eggplant_in_basket_lowdim/checkpoints/latest.ckpt \\
+  python scriptsv2/action_variance/analyze_variance.py \\
+      --checkpoint <ckpt>.ckpt \\
       --n-samples 32 \\
       --n-rollout-steps 60 \\
       --n-episodes 5 \\
       --output-dir data/eval/variance_eggplant_unet
-
-  python scriptsv2/analyze_action_variance.py \\
-      --checkpoint /home/harine/diffusion_policy/data/outputs/2026.04.29/\\
-16.40.54_train_mlp_eggplant_in_basket_lowdim_eggplant_in_basket_lowdim/checkpoints/latest.ckpt \\
-      --n-samples 32 \\
-      --output-dir data/eval/variance_eggplant_mlp
 """
 
 from __future__ import annotations
@@ -54,7 +48,7 @@ from typing import Any, Dict, List
 import numpy as np
 import torch
 
-sys.path.insert(0, str(Path(__file__).parent.parent))  # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root
 
 # ---------------------------------------------------------------------------
 ACTION_LABELS = ["dx", "dy", "dz", "droll", "dpitch", "dyaw", "gripper"]
@@ -75,7 +69,7 @@ NUM_ARM_JOINTS = 6
 
 
 # ---------------------------------------------------------------------------
-#  Shared helpers (mirror of eval_diffusion_policy_carrot.py)
+#  Shared helpers (mirror of eval_diffusion/eval_diffusion.py)
 # ---------------------------------------------------------------------------
 
 def _pose_to_vec(pose) -> np.ndarray:
@@ -392,7 +386,7 @@ def collect_variance_over_rollout(
 
 
 # ---------------------------------------------------------------------------
-#  Video writer (reuse from eval_diffusion_policy_carrot.py logic)
+#  Video writer (reuse from eval_diffusion/eval_diffusion.py logic)
 # ---------------------------------------------------------------------------
 
 def save_video_from_records(records: List[Dict], path: Path, fps: int = 10) -> bool:

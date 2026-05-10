@@ -1,10 +1,11 @@
 #!/bin/bash
 # Evaluate a diffusion_policy lowdim checkpoint (DiffusionUnet or MLP) trained
-# on `bridge_v2_carrot_lowdim` over N rollouts of `widowx_carrot_on_plate`.
+# on `bridge_v2_carrot_lowdim` / `eggplant_in_basket_lowdim` over N rollouts in
+# SimplerEnv. Task is chosen via the TASK env var (default eggplant).
 #
 # Usage
 # -----
-#   bash scripts/run_eval_diffusion_policy.sh <checkpoint> [num_episodes] [output_dir]
+#   bash scriptsv2/eval_diffusion/eval_diffusion.sh <checkpoint> [num_episodes] [output_dir]
 #
 # Defaults:
 #   num_episodes = 100
@@ -12,12 +13,13 @@
 #
 # Examples
 # --------
-#   # Evaluate the long-trained Diffusion U-Net run:
-#   bash scripts/run_eval_diffusion_policy.sh \
-#       /home/harine/diffusion_policy/data/outputs/2026.04.28/16.22.54_train_diffusion_unet_bridge_v2_carrot_lowdim_bridge_v2_carrot_lowdim/checkpoints/latest.ckpt
+#   # Evaluate the long-trained Diffusion U-Net run on eggplant:
+#   bash scriptsv2/eval_diffusion/eval_diffusion.sh \
+#       /home/harine/diffusion_policy/data/outputs/2026.04.29/16.45.01_train_diffusion_unet_eggplant_in_basket_lowdim_eggplant_in_basket_lowdim/checkpoints/latest.ckpt
 #
-#   # Evaluate the MLP run with 50 rollouts and a custom output dir:
-#   bash scripts/run_eval_diffusion_policy.sh \
+#   # Carrot task with 50 rollouts and a custom output dir:
+#   TASK=widowx_carrot_on_plate \
+#   bash scriptsv2/eval_diffusion/eval_diffusion.sh \
 #       /home/harine/diffusion_policy/data/outputs/2026.04.28/16.14.29_train_mlp_bridge_v2_carrot_lowdim_bridge_v2_carrot_lowdim/checkpoints/latest.ckpt \
 #       50 \
 #       data/eval/mlp_carrot
@@ -25,6 +27,10 @@
 # Env vars (override on cmdline):
 #   DEVICE            (default: cuda:0)
 #   START_SEED        (default: 1000)
+#   SEEDS             (default: unset; comma-separated list of explicit
+#                     episode seeds e.g. "17,50,3,9". When set, SEEDS
+#                     overrides START_SEED and the num_episodes positional
+#                     argument: one episode is run per listed seed in order.)
 #   MAX_STEPS         (default: 120)
 #   NUM_INFERENCE_STEPS  (default: cfg / 100, lower => faster)
 #   USE_EMA           (default: 1; set 0 to use raw model weights)
@@ -39,6 +45,9 @@
 #   BON_SCORE_NUM_ACTIONS       (default: 1; average rewards over first N actions)
 #   REWARD_SERVER_PORT          (default: 3100)
 #   REWARD_BATCH_SIZE           (default: 2)
+#   VIZ_Q             (default: 0; when 1 *and* BON_K>1, save per-replan
+#                     candidate actions + verifier rewards (Q-values) to
+#                     <output_dir>/bon_q/ep<idx>_seed<seed>.npz)
 
 set -euo pipefail
 
@@ -66,6 +75,8 @@ fi
 
 DEVICE="${DEVICE:-cuda:0}"
 START_SEED="${START_SEED:-1000}"
+SEEDS="${SEEDS:-}"
+VIZ_Q="${VIZ_Q:-0}"
 MAX_STEPS="${MAX_STEPS:-120}"
 USE_EMA="${USE_EMA:-1}"
 CONDA_ENV="${CONDA_ENV:-simpler_env}"
@@ -171,10 +182,11 @@ export DISPLAY=""
 DP_ROOT="${DIFFUSION_POLICY_ROOT:-/home/harine/diffusion_policy}"
 export PYTHONPATH="${DP_ROOT}:${PYTHONPATH:-}"
 
-# Run from the SimplerEnv repo dir so relative asset paths resolve.
+# Run from the repo root so relative asset paths resolve.
 full_path="$(realpath "$0")"
 dir_path="$(dirname "$full_path")"
-cd "$dir_path/.."
+repo_root="$(cd "$dir_path/../.." && pwd)"
+cd "$repo_root"
 
 mkdir -p "$OUT_DIR"
 
@@ -194,6 +206,12 @@ EXTRA_FLAGS+=(--bon-score-num-actions "$BON_SCORE_NUM_ACTIONS")
 EXTRA_FLAGS+=(--bon-replan-every-n-steps "$BON_REPLAN_EVERY_N_STEPS")
 EXTRA_FLAGS+=(--reward-server-port "$REWARD_SERVER_PORT")
 EXTRA_FLAGS+=(--reward-batch-size "$REWARD_BATCH_SIZE")
+if [[ -n "$SEEDS" ]]; then
+    EXTRA_FLAGS+=(--seeds "$SEEDS")
+fi
+if [[ "$VIZ_Q" == "1" ]]; then
+    EXTRA_FLAGS+=(--viz-q)
+fi
 
 echo "============================================================"
 echo "  diffusion_policy SimplerEnv eval"
@@ -203,17 +221,22 @@ echo "  num_episodes : $NUM_EPISODES"
 echo "  output_dir   : $OUT_DIR"
 echo "  device       : $DEVICE"
 echo "  use_ema      : $USE_EMA"
-echo "  start_seed   : $START_SEED"
+if [[ -n "$SEEDS" ]]; then
+    echo "  seeds        : $SEEDS  (overrides start_seed + num_episodes)"
+else
+    echo "  start_seed   : $START_SEED"
+fi
 echo "  max_steps    : $MAX_STEPS"
 echo "  save_videos  : $SAVE_VIDEOS  (fps=$VIDEO_FPS)"
 echo "  bon_k        : $BON_K"
 echo "  bon_replan_every_n_steps : $BON_REPLAN_EVERY_N_STEPS"
 echo "  bon_score_num_actions    : $BON_SCORE_NUM_ACTIONS"
 echo "  reward_port  : $REWARD_SERVER_PORT"
+echo "  viz_q        : $VIZ_Q"
 echo "============================================================"
 
 xvfb-run --auto-servernum -s "-screen 0 640x480x24" \
-    python scriptsv2/eval_diffusion_policy_carrot.py \
+    python "$dir_path/eval_diffusion.py" \
         --checkpoint "$CKPT" \
         --num-episodes "$NUM_EPISODES" \
         --start-seed "$START_SEED" \
@@ -225,5 +248,5 @@ xvfb-run --auto-servernum -s "-screen 0 640x480x24" \
 echo
 echo "[run_eval] done. Summary -> $OUT_DIR/eval_log.json"
 if [[ -f "$OUT_DIR/eval_log.json" ]]; then
-    python "$dir_path/summarize_evals.py" "$OUT_DIR/eval_log.json"
+    python "$dir_path/eval_summary.py" "$OUT_DIR/eval_log.json"
 fi

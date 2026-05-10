@@ -12,7 +12,7 @@ contains 53,192 episodes spanning 19,974 freeform language tasks. This script:
    alongside a per-group `filter_summary.json`.
 
 Usage:
-    python scriptsv2/filter_bridge_v2.py \
+    python scriptsv2/bridge_to_zarr/filter_bridge_v2.py \
         --output_dir data/bridge_v2_filtered \
         --task_groups "carrot_on_plate=carrot,plate" "eggplant_in_basket=eggplant,basket"
 

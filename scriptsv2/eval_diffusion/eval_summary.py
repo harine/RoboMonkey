@@ -1,9 +1,9 @@
-"""Pretty-print one or more `eval_log.json` files (output of
-`eval_diffusion_policy_carrot.py`) as a side-by-side table.
+"""Pretty-print one or more ``eval_log.json`` files (output of
+``eval_diffusion.py``) as a side-by-side table.
 
 Usage
 -----
-    python scriptsv2/summarize_evals.py \
+    python scriptsv2/eval_diffusion/eval_summary.py \
         data/eval/<unet_run>/eval_log.json \
         data/eval/<mlp_run>/eval_log.json
 """

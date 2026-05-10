@@ -4,8 +4,8 @@
 #
 # Usage
 # -----
-#   bash scriptsv2/run_variance_eggplant.sh                # defaults
-#   N_SAMPLES=64 bash scriptsv2/run_variance_eggplant.sh   # more samples
+#   bash scriptsv2/action_variance/analyze_variance.sh              # defaults
+#   N_SAMPLES=64 bash scriptsv2/action_variance/analyze_variance.sh # more samples
 #
 # Env vars
 # --------
@@ -33,7 +33,7 @@ MLP_OUT="data/eval/variance_eggplant_mlp"
 
 full_path="$(realpath "$0")"
 dir_path="$(dirname "$full_path")"
-repo_root="$(dirname "$dir_path")"
+repo_root="$(cd "$dir_path/../.." && pwd)"
 cd "$repo_root"
 
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
@@ -89,9 +89,11 @@ echo "  device          : $DEVICE"
 echo "============================================================"
 echo
 
+PY_SCRIPT="$dir_path/analyze_variance.py"
+
 echo ">>> Diffusion U-Net"
 xvfb-run --auto-servernum -s "-screen 0 640x480x24" \
-    python scriptsv2/analyze_action_variance.py \
+    python "$PY_SCRIPT" \
         --checkpoint "$UNET_CKPT" \
         --n-samples "$N_SAMPLES" \
         --n-rollout-steps "$N_ROLLOUT_STEPS" \
@@ -104,7 +106,7 @@ xvfb-run --auto-servernum -s "-screen 0 640x480x24" \
 echo
 echo ">>> MLP"
 xvfb-run --auto-servernum -s "-screen 0 640x480x24" \
-    python scriptsv2/analyze_action_variance.py \
+    python "$PY_SCRIPT" \
         --checkpoint "$MLP_CKPT" \
         --n-samples "$N_SAMPLES" \
         --n-rollout-steps "$N_ROLLOUT_STEPS" \

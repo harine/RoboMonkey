@@ -12,6 +12,12 @@ Two data sources feed the same downstream Zarr layout:
 
 Both feed [diffusion_policy](https://github.com/columbia-ai-robotics/diffusion_policy) training (MLP / Diffusion U-Net), which is then evaluated back in SIMPLER, optionally with a Best-of-N action verifier.
 
+> All pipeline scripts live under [scriptsv2/](scriptsv2/), organized into
+> `bridge_to_zarr/`, `plot_zarr/`, `eval_diffusion/`, `bon_eval/`,
+> `action_variance/`. See **[scriptsv2/README.md](scriptsv2/README.md)** for a
+> per-script index. The `scripts/` directory holds only env / setup / VLA
+> rollout collection.
+
 ---
 
 ## 0. Prerequisites
@@ -73,11 +79,11 @@ Output locations:
 ### 1c. Sanity-check a shard
 
 ```bash
-python scripts/zarr_dataset_dashboard.py \
-    openvla-mini/data/carrot_on_plate/state0.zarr
+python scriptsv2/plot_zarr/plot_zarr.py \
+    --shard openvla-mini/data/carrot_on_plate/state0.zarr
 ```
 
-Writes `state0_dashboard.png`, `state0_start_positions.png`, and (if applicable) `state0_success_episodes.txt` next to the shard.
+Writes `state0_dashboard.png`, `state0_start_positions.png`, and `state0_scatters.png` next to the shard. Multiple `--shard` arguments are merged into a single combined figure.
 
 ---
 
@@ -85,7 +91,7 @@ Writes `state0_dashboard.png`, `state0_start_positions.png`, and (if applicable)
 
 Bridge V2 ([`jesbu1/bridge_v2_lerobot`](https://huggingface.co/datasets/jesbu1/bridge_v2_lerobot)) bundles **53,192 episodes across 19,974 freeform language tasks**. We download only the carrot+plate and eggplant+basket subsets and convert them to our Zarr layout.
 
-### 2a. How the filter works ([scriptsv2/filter_bridge_v2.py](scriptsv2/filter_bridge_v2.py))
+### 2a. How the filter works ([scriptsv2/bridge_to_zarr/filter_bridge_v2.py](scriptsv2/bridge_to_zarr/filter_bridge_v2.py))
 
 The script takes "task groups" of the form `name=kw1,kw2,...`. A Bridge task description matches a group iff **all** keywords appear (case-insensitive) and **none** of the `--exclude` phrases do.
 
@@ -97,7 +103,7 @@ Steps the script performs:
 4. Selectively downloads only those episodes' `.parquet` data + `image_*.mp4` videos, preserving the upstream `chunk-XXX/episode_YYYYYY.*` layout.
 5. Writes a filtered `meta/tasks.jsonl`, `meta/episodes.jsonl`, updated `meta/info.json`, and a per-group `filter_summary.json`.
 
-Defaults baked into [scriptsv2/download_carrot_and_eggplant.sh](scriptsv2/download_carrot_and_eggplant.sh):
+Defaults baked into [scriptsv2/bridge_to_zarr/bridge_to_zarr.sh](scriptsv2/bridge_to_zarr/bridge_to_zarr.sh):
 
 | group              | keywords          | excludes              | result                                   |
 | ------------------ | ----------------- | --------------------- | ---------------------------------------- |
@@ -106,47 +112,51 @@ Defaults baked into [scriptsv2/download_carrot_and_eggplant.sh](scriptsv2/downlo
 
 > **Note on eggplant:** the Bridge task list does not contain the literal token "basket" near every eggplant pick-and-place. If a group matches 0 tasks the script warns loudly. Override the keyword set via the `EGGPLANT_GROUP` env var, e.g.
 > ```bash
-> EGGPLANT_GROUP="eggplant_in_pot=eggplant,pot" bash scriptsv2/download_carrot_and_eggplant.sh
+> EGGPLANT_GROUP="eggplant_in_pot=eggplant,pot" bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
 > ```
 
-### 2b. Run the filter + selective download
+### 2b. Run the filter + download + convert (one-shot)
 
 ```bash
 # Inspect matches without downloading parquet/mp4:
-DRY_RUN=1 bash scriptsv2/download_carrot_and_eggplant.sh
+DRY_RUN=1 bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
 
-# Real download (default OUT_DIR=data/bridge_v2_filtered):
-bash scriptsv2/download_carrot_and_eggplant.sh
+# Full pipeline: download filtered subset AND convert to zarr.
+bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
 
 # Cap episodes per group (useful for quick iteration):
-MAX_EPISODES_PER_GROUP=20 bash scriptsv2/download_carrot_and_eggplant.sh
+MAX_EPISODES_PER_GROUP=20 bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
+
+# Filter+download only, skip zarr conversion:
+SKIP_CONVERT=1 bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
 ```
 
-Output location: [data/bridge_v2_filtered/](data/bridge_v2_filtered/) with subdirs `meta/`, `data/chunk-XXX/...parquet`, `videos/chunk-XXX/.../*.mp4`, plus `filter_summary.json` summarizing per-group counts.
+Output locations after a full run:
+- Filtered LeRobot subset: [data/bridge_v2_filtered/](data/bridge_v2_filtered/) (meta + parquet + mp4 + `filter_summary.json`)
+- Zarr shards: `openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr` and `openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr`
 
-### 2c. Optional: visualize the filtered subset
+### 2c. Optional: visualize the filtered subset *before* converting
+
+If you want to preview the raw LeRobot dataset (with mp4 thumbnails) before running the zarr conversion:
 
 ```bash
-python scriptsv2/plot_bridge_v2_dashboard.py \
-    --bridge_dir data/bridge_v2_filtered
+python scriptsv2/plot_zarr/plot_bridge_lerobot.py \
+    --data_dir data/bridge_v2_filtered
 ```
 
-### 2d. Convert filtered Bridge → SIMPLER-style Zarr ([scriptsv2/bridge_to_zarr.py](scriptsv2/bridge_to_zarr.py))
+After conversion, use `scriptsv2/plot_zarr/plot_zarr.py` on the zarr output instead (cleaner / supports multi-shard overlay).
 
-The Zarr written here mirrors the synthetic collector's layout (same keys under `data/obs/*`, `data/actions`, `meta/episode_ends`) so downstream training and dashboards work unchanged. Bridge `observation.state = [x, y, z, roll, pitch, yaw, gripper]` is converted to `(x, y, z, qx, qy, qz, qw)` via extrinsic XYZ, with linear/angular EE velocities computed by finite difference and missing fields zero-filled.
+### 2d. Convert filtered Bridge → SIMPLER-style Zarr ([scriptsv2/bridge_to_zarr/bridge_to_zarr.py](scriptsv2/bridge_to_zarr/bridge_to_zarr.py))
+
+This is run automatically by `bridge_to_zarr.sh` above. The Zarr written mirrors the synthetic collector's layout (same keys under `data/obs/*`, `data/actions`, `meta/episode_ends`) so downstream training and dashboards work unchanged. Bridge `observation.state = [x, y, z, roll, pitch, yaw, gripper]` is converted to `(x, y, z, qx, qy, qz, qw)` via extrinsic XYZ, with linear/angular EE velocities computed by finite difference and missing fields zero-filled.
+
+To run the convert stage manually (e.g. for a custom task filter):
 
 ```bash
-# carrot
-python scriptsv2/bridge_to_zarr.py \
+python scriptsv2/bridge_to_zarr/bridge_to_zarr.py \
     --bridge_dir data/bridge_v2_filtered \
     --task_filter "put carrot on plate" \
     --out openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr
-
-# eggplant
-python scriptsv2/bridge_to_zarr.py \
-    --bridge_dir data/bridge_v2_filtered \
-    --task_filter "put eggplant in basket" \
-    --out openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr
 ```
 
 Output locations:
@@ -230,13 +240,13 @@ training step.
 
 ## 4. Evaluate the policy in SIMPLER
 
-The single-checkpoint runner is [scriptsv2/run_eval_diffusion_policy.sh](scriptsv2/run_eval_diffusion_policy.sh). It accepts the task via the `TASK` env var.
+The single-checkpoint runner is [scriptsv2/eval_diffusion/eval_diffusion.sh](scriptsv2/eval_diffusion/eval_diffusion.sh). It accepts the task via the `TASK` env var. See [scriptsv2/README.md](scriptsv2/README.md) for the full per-script index.
 
 ### 4a. Carrot — single checkpoint
 
 ```bash
 TASK=widowx_carrot_on_plate \
-bash scriptsv2/run_eval_diffusion_policy.sh \
+bash scriptsv2/eval_diffusion/eval_diffusion.sh \
     ~/diffusion_policy/data/outputs/2026.04.28/16.22.54_train_diffusion_unet_bridge_v2_carrot_lowdim_bridge_v2_carrot_lowdim/checkpoints/latest.ckpt \
     100
 ```
@@ -245,19 +255,24 @@ bash scriptsv2/run_eval_diffusion_policy.sh \
 
 ```bash
 TASK=widowx_put_eggplant_in_basket \
-bash scriptsv2/run_eval_diffusion_policy.sh \
+bash scriptsv2/eval_diffusion/eval_diffusion.sh \
     ~/diffusion_policy/data/outputs/2026.04.29/16.45.01_train_diffusion_unet_eggplant_in_basket_lowdim_eggplant_in_basket_lowdim/checkpoints/latest.ckpt \
     100
 ```
 
 ### 4c. Both architectures at once
 
-```bash
-# carrot (MLP + U-Net, 100 episodes each)
-bash scriptsv2/run_eval_both_architectures.sh
+Single wrapper covers both tasks; `TASK` short names are accepted (`carrot` / `eggplant`, default eggplant):
 
-# eggplant (MLP + U-Net, 100 episodes each)
-bash scriptsv2/run_eval_both_eggplant.sh
+```bash
+# eggplant — MLP + U-Net, 100 episodes each
+bash scriptsv2/eval_diffusion/eval_diffusion_both.sh
+
+# carrot
+TASK=carrot bash scriptsv2/eval_diffusion/eval_diffusion_both.sh
+
+# custom checkpoints, custom episode count
+bash scriptsv2/eval_diffusion/eval_diffusion_both.sh <unet_ckpt> <mlp_ckpt> 50
 ```
 
 ### 4d. Best-of-N with the action verifier
@@ -280,19 +295,29 @@ BON_REPLAN_EVERY_N_STEPS=0 \
 BON_SCORE_NUM_ACTIONS=1 \
 REWARD_SERVER_PORT=3100 \
 REWARD_BATCH_SIZE=16 \
-bash scriptsv2/run_eval_diffusion_policy.sh \
+bash scriptsv2/eval_diffusion/eval_diffusion.sh \
     ~/diffusion_policy/data/outputs/2026.04.29/16.45.01_train_diffusion_unet_eggplant_in_basket_lowdim_eggplant_in_basket_lowdim/checkpoints/latest.ckpt \
     100
 ```
 
-Sweeps over `BON_K`:
+Full ordered sweep over `BON_K ∈ {2,4,8,16,32,64}` for both architectures with resume support:
 
 ```bash
-bash scriptsv2/run_bon_mlp_unet_sweep.sh
-bash scriptsv2/run_bon_ordered_sweep.sh
+bash scriptsv2/bon_eval/bon_eval.sh             # full sweep, 100 eps per cell
+bash scriptsv2/bon_eval/bon_eval.sh 5           # smoke test, 5 eps per cell
+ONLY_K="15" bash scriptsv2/bon_eval/bon_eval.sh # re-run just k=15
 ```
 
-### 4e. Output locations
+### 4e. Action variance study (optional)
+
+To measure per-step action variance for both architectures (motivates BON):
+
+```bash
+bash scriptsv2/action_variance/analyze_variance.sh
+N_SAMPLES=64 bash scriptsv2/action_variance/analyze_variance.sh
+```
+
+### 4f. Output locations
 
 Each eval writes to `data/eval/<run_name>/`, where `<run_name>` is the basename of the checkpoint's `outputs/<date>/<run>` directory. Existing runs:
 
@@ -307,7 +332,7 @@ Each eval writes to `data/eval/<run_name>/`, where `<run_name>` is the basename 
 Each run dir contains `eval_log.json` (per-episode results) and `episodes.jsonl`. Summarize:
 
 ```bash
-python scriptsv2/summarize_evals.py data/eval/<run_name>/eval_log.json
+python scriptsv2/eval_diffusion/eval_summary.py data/eval/<run_name>/eval_log.json
 ```
 
 ---
@@ -316,11 +341,13 @@ python scriptsv2/summarize_evals.py data/eval/<run_name>/eval_log.json
 
 | Stage | Path | Produced by |
 | --- | --- | --- |
-| Filtered Bridge V2 (parquet + mp4 + meta) | [data/bridge_v2_filtered/](data/bridge_v2_filtered/) | `scriptsv2/download_carrot_and_eggplant.sh` |
-| Filter summary (matched tasks/episodes) | [data/bridge_v2_filtered/filter_summary.json](data/bridge_v2_filtered/filter_summary.json) | `scriptsv2/filter_bridge_v2.py` |
+| Filtered Bridge V2 (parquet + mp4 + meta) | [data/bridge_v2_filtered/](data/bridge_v2_filtered/) | `scriptsv2/bridge_to_zarr/bridge_to_zarr.sh` |
+| Filter summary (matched tasks/episodes) | [data/bridge_v2_filtered/filter_summary.json](data/bridge_v2_filtered/filter_summary.json) | `scriptsv2/bridge_to_zarr/filter_bridge_v2.py` |
 | Synthetic carrot Zarr | [openvla-mini/data/carrot_on_plate/state0.zarr](openvla-mini/data/carrot_on_plate/state0.zarr) | `scripts/collect_carrot_on_plate.sh` |
 | Synthetic eggplant Zarr | [openvla-mini/data/eggplant_in_basket/state0.zarr](openvla-mini/data/eggplant_in_basket/state0.zarr) | `scripts/collect_eggplant_in_basket.sh` |
-| Bridge → carrot Zarr | [openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr](openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr) | `scriptsv2/bridge_to_zarr.py` |
-| Bridge → eggplant Zarr | [openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr](openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr) | `scriptsv2/bridge_to_zarr.py` |
+| Bridge → carrot Zarr | [openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr](openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr) | `scriptsv2/bridge_to_zarr/bridge_to_zarr.py` |
+| Bridge → eggplant Zarr | [openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr](openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr) | `scriptsv2/bridge_to_zarr/bridge_to_zarr.py` |
 | Trained checkpoints | `~/diffusion_policy/data/outputs/<date>/<run>/checkpoints/latest.ckpt` | `diffusion_policy` repo |
-| SIMPLER eval logs | [data/eval/&lt;run_name&gt;/](data/eval/) | `scriptsv2/run_eval_diffusion_policy.sh` |
+| SIMPLER eval logs | [data/eval/&lt;run_name&gt;/](data/eval/) | `scriptsv2/eval_diffusion/eval_diffusion.sh` |
+| BON sweep logs | [data/eval/bon/](data/eval/bon/) | `scriptsv2/bon_eval/bon_eval.sh` |
+| Action-variance logs | [data/eval/variance_eggplant_*/](data/eval/) | `scriptsv2/action_variance/analyze_variance.sh` |

@@ -1,7 +1,8 @@
 """
 Evaluate a `diffusion_policy` lowdim checkpoint (DiffusionUnetImagePolicy /
-MLPImagePolicy trained with `bridge_v2_carrot_lowdim` task) on the
-SimplerEnv `widowx_carrot_on_plate` task.
+MLPImagePolicy trained with `bridge_v2_carrot_lowdim` or
+`eggplant_in_basket_lowdim`) on the corresponding SimplerEnv task. Task is
+chosen via the ``--task`` CLI flag (default ``widowx_carrot_on_plate``).
 
 The checkpoints expect a 53-dim state vector built from privileged simulator
 state and re-create the same per-step obs that `collect_trajectories.py`
@@ -26,7 +27,7 @@ Loads only the policy submodule from the workspace checkpoint, so neither
 
 Usage
 -----
-    python scripts/eval_diffusion_policy_carrot.py \
+    python scriptsv2/eval_diffusion/eval_diffusion.py \
         --checkpoint /home/harine/diffusion_policy/data/outputs/2026.04.28/16.22.54_train_diffusion_unet_bridge_v2_carrot_lowdim_bridge_v2_carrot_lowdim/checkpoints/latest.ckpt \
         --num-episodes 100 \
         --output-dir data/eval/diffusion_unet_carrot
@@ -57,7 +58,7 @@ import torch
 #  invokes its own ActionTokenizer) or integer token IDs. We send the latter.
 # ---------------------------------------------------------------------------
 
-_OPENVLA_MINI_DIR = Path(__file__).resolve().parents[1] / "openvla-mini"
+_OPENVLA_MINI_DIR = Path(__file__).resolve().parents[2] / "openvla-mini"
 if str(_OPENVLA_MINI_DIR) not in sys.path:
     sys.path.insert(0, str(_OPENVLA_MINI_DIR))
 
@@ -338,6 +339,13 @@ def load_policy(checkpoint: str, device: torch.device, use_ema: bool):
     """
     import dill
     import hydra
+    from omegaconf import OmegaConf
+
+    # diffusion_policy configs use `${eval:...}` interpolations (registered by
+    # its train.py entry point). Re-register here so we can instantiate
+    # `cfg.policy` standalone without importing the training workspace.
+    if not OmegaConf.has_resolver("eval"):
+        OmegaConf.register_new_resolver("eval", eval, replace=True)
 
     print(f"[eval] Loading checkpoint: {checkpoint}")
     payload = torch.load(
@@ -394,11 +402,18 @@ def rollout_episode(
     reward_image_path: Path | None = None,
     bon_replan_every_n_steps: int = 0,
     bon_score_num_actions: int = 1,
+    viz_q: bool = False,
 ) -> Dict[str, Any]:
     """Run one episode and return per-step diagnostics.
 
     If `capture_frames=True`, also collects per-step camera RGB frames into
     the returned dict under key `"frames"` (list of HxWx3 uint8 numpy arrays).
+
+    If `viz_q=True` *and* BoN is enabled, also captures per-branch data under
+    `"bon_branches"`: at each replan we record all K candidate action chunks,
+    the verifier rewards for each, the chosen index, and the camera frame
+    that the verifier scored. Caller can `np.savez` this for later
+    visualization of branching / action selection.
     """
     n_obs_steps = int(cfg.n_obs_steps)
     n_action_steps = int(cfg.n_action_steps)
@@ -434,6 +449,10 @@ def rollout_episode(
     use_bon = int(bon_k) > 1
     if use_bon and reward_image_path is None:
         reward_image_path = Path("./transfer_images/reward_img.jpg").absolute()
+
+    bon_branches: Optional[List[Dict[str, Any]]] = (
+        [] if (viz_q and use_bon) else None
+    )
 
     # Lazy import (only when we actually need camera frames)
     if capture_frames or use_bon:
@@ -529,6 +548,17 @@ def rollout_episode(
                 selected_reward = float(per_candidate_reward[selected_index])
                 bon_rewards = per_candidate_reward.tolist()
                 actions_chunk = candidate_chunks[selected_index]
+
+                if bon_branches is not None and current_frame is not None:
+                    bon_branches.append({
+                        "t": int(t),
+                        "candidate_actions": candidate_chunks.astype(np.float32, copy=True),
+                        "per_candidate_rewards": rewards_matrix.astype(np.float32, copy=True),
+                        "per_candidate_mean_reward": per_candidate_reward.astype(np.float32, copy=True),
+                        "selected_index": int(selected_index),
+                        "selected_reward": float(selected_reward),
+                        "frame": current_frame.astype(np.uint8, copy=True),
+                    })
             else:
                 actions_chunk = _sample_chunk(0)
             pending_actions = list(actions_chunk)
@@ -578,6 +608,7 @@ def rollout_episode(
         "num_steps": int(t + 1 if (success or truncated) else t),
         "steps": step_log,
         "frames": frames,
+        "bon_branches": bon_branches,
     }
 
 
@@ -735,6 +766,11 @@ def main() -> None:
     parser.add_argument("--start-seed", type=int, default=1000,
                         help="Episode i uses seed = start_seed + i. "
                              "Default 1000 matches openvla-mini eval.")
+    parser.add_argument("--seeds", type=str, default=None,
+                        help="Comma-separated list of explicit episode seeds "
+                             "(e.g. '17,50,3,9'). When set, --num-episodes "
+                             "and --start-seed are ignored and one episode is "
+                             "run per listed seed in order.")
     parser.add_argument("--max-steps", type=int, default=120,
                         help="Per-episode env step cap (env may also truncate).")
     parser.add_argument("--device", default="cuda:0")
@@ -772,6 +808,12 @@ def main() -> None:
     parser.add_argument("--reward-image-path",
                         default="./transfer_images/reward_img.jpg",
                         help="Temporary JPEG path sent to the verifier.")
+    parser.add_argument("--viz-q", action="store_true",
+                        help="When BoN is enabled, save per-replan candidate "
+                             "actions, verifier rewards (Q-values), the "
+                             "selected index, and the verifier-scored frame "
+                             "to <output_dir>/bon_q/ep<idx>_seed<seed>.npz "
+                             "for later branching/action-selection viz.")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -834,13 +876,43 @@ def main() -> None:
         video_dir.mkdir(parents=True, exist_ok=True)
         print(f"[eval] saving videos for first {save_videos_n} episode(s) -> {video_dir}")
 
+    if args.seeds:
+        explicit_seeds: Optional[List[int]] = [
+            int(s) for s in args.seeds.split(",") if s.strip()
+        ]
+        num_episodes = len(explicit_seeds)
+        if num_episodes == 0:
+            raise SystemExit("--seeds was empty after parsing")
+        print(
+            f"[eval] using --seeds={explicit_seeds} "
+            f"(overrides --num-episodes={args.num_episodes} and "
+            f"--start-seed={args.start_seed}); running {num_episodes} episode(s)."
+        )
+    else:
+        explicit_seeds = None
+        num_episodes = int(args.num_episodes)
+
+    viz_q = bool(args.viz_q)
+    bon_q_dir: Path | None = None
+    if viz_q and bon_k > 1:
+        if output_dir is None:
+            print("[eval] --viz-q requires --output-dir; disabling.")
+            viz_q = False
+        else:
+            bon_q_dir = output_dir / "bon_q"
+            bon_q_dir.mkdir(parents=True, exist_ok=True)
+            print(f"[eval] viz_q enabled -> saving per-branch Q-values to {bon_q_dir}")
+    elif viz_q:
+        print("[eval] --viz-q has no effect when bon_k <= 1; disabling.")
+        viz_q = False
+
     successes = 0
     truncations = 0
     durations: List[float] = []
     t0 = time.time()
 
-    for i in range(args.num_episodes):
-        ep_seed = int(args.start_seed) + i
+    for i in range(num_episodes):
+        ep_seed = explicit_seeds[i] if explicit_seeds is not None else int(args.start_seed) + i
         capture = (i < save_videos_n)
         ep_t0 = time.time()
         try:
@@ -860,11 +932,13 @@ def main() -> None:
                 reward_image_path=Path(args.reward_image_path).absolute(),
                 bon_replan_every_n_steps=bon_replan_every_n_steps,
                 bon_score_num_actions=bon_score_num_actions,
+                viz_q=viz_q,
             )
         except Exception as e:
             print(f"[eval] episode {i} (seed={ep_seed}) raised: {e!r}")
             ep = {"success": False, "truncated": False, "num_steps": 0,
-                  "error": repr(e), "steps": [], "frames": []}
+                  "error": repr(e), "steps": [], "frames": [],
+                  "bon_branches": None}
 
         durations.append(time.time() - ep_t0)
         successes += int(ep["success"])
@@ -872,12 +946,35 @@ def main() -> None:
 
         sr_so_far = successes / float(i + 1)
         print(
-            f"[eval] ep={i+1:3d}/{args.num_episodes}  seed={ep_seed}  "
+            f"[eval] ep={i+1:3d}/{num_episodes}  seed={ep_seed}  "
             f"success={int(ep['success'])}  trunc={int(ep['truncated'])}  "
             f"steps={ep['num_steps']:3d}  elapsed={durations[-1]:5.1f}s  "
             f"running_sr={sr_so_far:.3f}",
             flush=True,
         )
+
+        if bon_q_dir is not None and ep.get("bon_branches"):
+            branches = ep["bon_branches"]
+            npz_path = bon_q_dir / f"ep{i:03d}_seed{ep_seed}.npz"
+            np.savez_compressed(
+                npz_path,
+                seed=np.int32(ep_seed),
+                ep_idx=np.int32(i),
+                success=np.int32(int(ep["success"])),
+                truncated=np.int32(int(ep["truncated"])),
+                num_steps=np.int32(int(ep["num_steps"])),
+                bon_k=np.int32(int(bon_k)),
+                bon_replan_every_n_steps=np.int32(int(bon_replan_every_n_steps)),
+                bon_score_num_actions=np.int32(int(bon_score_num_actions)),
+                branch_t=np.asarray([b["t"] for b in branches], dtype=np.int32),
+                candidate_actions=np.stack([b["candidate_actions"] for b in branches], axis=0),
+                per_candidate_rewards=np.stack([b["per_candidate_rewards"] for b in branches], axis=0),
+                per_candidate_mean_reward=np.stack([b["per_candidate_mean_reward"] for b in branches], axis=0),
+                selected_index=np.asarray([b["selected_index"] for b in branches], dtype=np.int32),
+                selected_reward=np.asarray([b["selected_reward"] for b in branches], dtype=np.float32),
+                frames=np.stack([b["frame"] for b in branches], axis=0),
+            )
+            print(f"[eval]   saved Q-values -> {npz_path} ({len(branches)} branches)")
 
         video_path: Path | None = None
         if video_dir is not None and capture and ep.get("frames"):
@@ -908,13 +1005,16 @@ def main() -> None:
             ep_log_file.flush()
 
     total_t = time.time() - t0
-    success_rate = successes / float(args.num_episodes)
+    success_rate = successes / float(num_episodes)
     summary = {
         "checkpoint": str(args.checkpoint),
         "task": args.task,
         "instruction": str(instr),
-        "num_episodes": int(args.num_episodes),
+        "num_episodes": int(num_episodes),
         "start_seed": int(args.start_seed),
+        "seeds": (
+            [int(s) for s in explicit_seeds] if explicit_seeds is not None else None
+        ),
         "max_steps": int(args.max_steps),
         "use_ema": (not args.no_ema),
         "bon_k": int(bon_k),

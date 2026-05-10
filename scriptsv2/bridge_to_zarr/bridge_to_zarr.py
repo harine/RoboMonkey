@@ -1,8 +1,7 @@
 """Convert a filtered Bridge V2 LeRobot subset into a SIMPLER-compatible Zarr shard.
 
 The output shard mirrors the on-disk layout used by ``scripts/collect_carrot_on_plate.sh``
-so it can be loaded with the same downstream code (e.g. ``scripts/zarr_dataset_dashboard.py``,
-``scriptsv2/plot_combined_carrot.py``):
+so it can be loaded with the same downstream code (e.g. ``scriptsv2/plot_zarr/plot_zarr.py``):
 
     <out>.zarr/
         attrs:                env_name, task_description, source, frame, notes
@@ -29,8 +28,8 @@ frame; rotations are converted to quaternions ``(qx, qy, qz, qw)`` via scipy's
 extrinsic XYZ convention.
 
 Usage:
-    python scriptsv2/bridge_to_zarr.py
-    python scriptsv2/bridge_to_zarr.py \
+    python scriptsv2/bridge_to_zarr/bridge_to_zarr.py
+    python scriptsv2/bridge_to_zarr/bridge_to_zarr.py \
         --bridge_dir data/bridge_v2_filtered \
         --task_filter "put carrot on plate" \
         --out openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr
