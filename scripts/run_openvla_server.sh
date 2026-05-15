@@ -11,6 +11,12 @@
 
 set -e
 
+# Ensure loopback traffic bypasses the cluster's HTTP proxy (e.g. Squid on
+# Klone) so the server's local /get_model_info health check is not routed
+# through it. Outbound proxy is preserved.
+export no_proxy="127.0.0.1,localhost${no_proxy:+,$no_proxy}"
+export NO_PROXY="$no_proxy"
+
 GPU=${CUDA_VISIBLE_DEVICES:-0}
 SEED=${SEED:-1}
 

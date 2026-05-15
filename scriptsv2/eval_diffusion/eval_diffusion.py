@@ -62,6 +62,19 @@ _OPENVLA_MINI_DIR = Path(__file__).resolve().parents[2] / "openvla-mini"
 if str(_OPENVLA_MINI_DIR) not in sys.path:
     sys.path.insert(0, str(_OPENVLA_MINI_DIR))
 
+import os as _os
+_DP_ENV = _os.environ.get("DIFFUSION_POLICY_ROOT", "")
+_DP_DEFAULT = "/mmfs1/home/harine/diffusion_policy"
+_DP_ROOT = _DP_ENV if _os.path.isdir(_DP_ENV) else _DP_DEFAULT
+if _os.path.isdir(_DP_ROOT) and _DP_ROOT not in sys.path:
+    sys.path.insert(0, _DP_ROOT)
+
+# Allow `from verifier_client import VerifierClient` so REWARD_SERVER_PORT<=0
+# routes to the in-process RoboMonkey verifier instead of HTTP.
+_MONKEY_VERIFIER_SRC = Path(__file__).resolve().parents[2] / "monkey-verifier" / "src"
+if str(_MONKEY_VERIFIER_SRC) not in sys.path:
+    sys.path.insert(0, str(_MONKEY_VERIFIER_SRC))
+
 
 _TOKEN_ACTION_CONVERTER: Optional[Any] = None
 
@@ -70,6 +83,14 @@ def _get_token_action_converter():
     """Lazily build the bridge_orig TokenActionConverter (HF download/cached)."""
     global _TOKEN_ACTION_CONVERTER
     if _TOKEN_ACTION_CONVERTER is None:
+        # Patch transformers' PretrainedConfig.__repr__ before the AutoConfig
+        # call: with trust_remote_code the Prismatic config nests a LlamaConfig
+        # whose to_json_string() raises (LlamaConfig isn't JSON-serializable
+        # as a dict value), and __repr__ is eagerly evaluated by an INFO log.
+        from transformers.configuration_utils import PretrainedConfig
+        if not getattr(PretrainedConfig, "_safe_repr_patched", False):
+            PretrainedConfig.__repr__ = lambda self: f"<{self.__class__.__name__}>"
+            PretrainedConfig._safe_repr_patched = True
         from experiments.robot.token_action_converter import TokenActionConverter
         _TOKEN_ACTION_CONVERTER = TokenActionConverter(
             n_action_bins=256, unnorm_key="bridge_orig",
@@ -158,6 +179,20 @@ def _actions_to_openvla_token_ids(actions: np.ndarray) -> np.ndarray:
     )
 
 
+_VERIFIER_CLIENT: Optional[Any] = None
+
+
+def _get_verifier_client(reward_server_port: int):
+    """Lazy-init a shared VerifierClient. port<=0 => in-process, else HTTP."""
+    global _VERIFIER_CLIENT
+    if _VERIFIER_CLIENT is None:
+        from verifier_client import VerifierClient  # noqa: WPS433
+        _VERIFIER_CLIENT = VerifierClient.from_port(int(reward_server_port))
+        mode = "in-process" if _VERIFIER_CLIENT.in_process else _VERIFIER_CLIENT.server_url
+        print(f"[eval] verifier client mode: {mode}")
+    return _VERIFIER_CLIENT
+
+
 def get_verifier_rewards(
     instruction: str,
     image_path: Path,
@@ -165,68 +200,55 @@ def get_verifier_rewards(
     reward_server_port: int,
     reward_batch_size: int,
 ) -> List[float]:
-    """Score candidate 7D actions with the RoboMonkey verifier server.
+    """Score candidate 7D actions with the RoboMonkey verifier.
 
-    Sends ceil(N / reward_batch_size) HTTP requests. Each request is
-    dispatched in a thread so that TCP + server-side CPU work (image load,
-    tokenisation) overlaps across batches. GPU forward passes still serialize
-    inside the server, but the I/O overhead is amortised.
+    Routes via `VerifierClient`:
+      * port <= 0  => in-process (single batched GPU call, no HTTP/disk).
+      * port  > 0  => HTTP POST to infer_server (parallel-batched).
 
-    Set reward_batch_size >= total number of actions to send everything in a
-    single round-trip (fastest when GPU memory allows).
+    `reward_batch_size` is honored only for HTTP mode (parallel sub-batches);
+    the in-process backend always submits one batched forward pass.
     """
     import concurrent.futures
 
     actions = np.asarray(actions, dtype=np.float32)
     token_ids = _actions_to_openvla_token_ids(actions)
+    client = _get_verifier_client(reward_server_port)
+
+    if client.in_process:
+        return client.score_candidates(instruction, str(image_path), token_ids)
 
     num_batches = math.ceil(len(token_ids) / reward_batch_size)
+    if num_batches <= 1:
+        return client.score_candidates(instruction, str(image_path), token_ids)
+
     batches = [
         token_ids[i * reward_batch_size: min((i + 1) * reward_batch_size, len(token_ids))]
         for i in range(num_batches)
     ]
-
-    url = f"http://127.0.0.1:{reward_server_port}/process"
-
-    def _post_batch(batch: np.ndarray) -> List[float]:
-        payload = {
-            "instruction": instruction,
-            "image_path": str(image_path),
-            "action": batch.tolist(),
-        }
-        response = requests.post(url, json=payload, timeout=300)
-        response.raise_for_status()
-        return [float(r) for r in response.json()["rewards"]]
-
-    if num_batches == 1:
-        return _post_batch(batches[0])
-
     all_rewards: List[float] = [0.0] * len(token_ids)
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_batches) as pool:
         futures = {
-            pool.submit(_post_batch, batch): i * reward_batch_size
+            pool.submit(
+                client.score_candidates, instruction, str(image_path), batch
+            ): i * reward_batch_size
             for i, batch in enumerate(batches)
         }
         for future in concurrent.futures.as_completed(futures):
             start_idx = futures[future]
             rewards = future.result()
             all_rewards[start_idx: start_idx + len(rewards)] = rewards
-
     return all_rewards
 
 
 def check_verifier_health(reward_server_port: int) -> None:
-    """Ping the verifier server to fail-fast if it isn't running."""
-    url = f"http://127.0.0.1:{reward_server_port}/"
-    try:
-        response = requests.get(url, timeout=5)
-        response.raise_for_status()
-    except Exception as e:
-        raise RuntimeError(
-            f"Verifier server health check failed at {url}: {e!r}. "
-            "Start the RoboMonkey verifier server before running with bon_k > 1."
-        ) from e
-    print(f"[eval] Verifier server reachable at {url}")
+    """Fail-fast if the verifier isn't reachable (in-process load or HTTP ping)."""
+    client = _get_verifier_client(reward_server_port)
+    client.health_check()
+    if client.in_process:
+        print("[eval] In-process verifier loaded.")
+    else:
+        print(f"[eval] Verifier server reachable at {client.server_url}/")
 
 
 # ---------------------------------------------------------------------------
@@ -419,10 +441,11 @@ def rollout_episode(
     n_action_steps = int(cfg.n_action_steps)
 
     obs, _reset_info = env.reset(seed=int(seed))
+    env_base = getattr(env, "unwrapped", env)
 
-    source_obj = getattr(env, "episode_source_obj", None)
-    target_obj = getattr(env, "episode_target_obj", None)
-    tcp_link = getattr(env, "tcp", None)
+    source_obj = getattr(env_base, "episode_source_obj", None)
+    target_obj = getattr(env_base, "episode_target_obj", None)
+    tcp_link = getattr(env_base, "tcp", None)
     if source_obj is None or target_obj is None or tcp_link is None:
         raise RuntimeError(
             "env is missing episode_source_obj / episode_target_obj / tcp; "
@@ -462,7 +485,7 @@ def rollout_episode(
 
     while t < max_steps:
         step_obs = build_obs_step(
-            env=env,
+            env=env_base,
             obs=obs,
             prev_arm_action=prev_arm_action,
             prev_gripper_action=prev_gripper_action,
@@ -475,8 +498,16 @@ def rollout_episode(
         current_frame: np.ndarray | None = None
         if capture_frames or use_bon:
             try:
-                img = get_image_from_maniskill2_obs_dict(env, obs)
-                arr = np.asarray(img, dtype=np.uint8)
+                try:
+                    img = get_image_from_maniskill2_obs_dict(env_base, obs)
+                except KeyError:
+                    # state-only obs_mode: env doesn't run the Color→rgb
+                    # wrapper; fall back to the raw Color texture.
+                    cam = "3rd_view_camera" if "widowx" in env_base.robot_uid else "overhead_camera"
+                    img = obs["image"][cam]["Color"][..., :3]
+                arr = np.asarray(img)
+                if arr.dtype != np.uint8:
+                    arr = np.clip(arr * (255.0 if arr.max() <= 1.0 else 1.0), 0, 255).astype(np.uint8)
                 if arr.ndim == 3 and arr.shape[-1] == 3:
                     current_frame = arr
                     if capture_frames:
@@ -518,15 +549,42 @@ def rollout_episode(
                     f"expected ({n_action_steps}, 7), got {chunk.shape}"
                 return chunk.astype(np.float32, copy=False)
 
+            def _sample_chunks_batched(K: int) -> np.ndarray:
+                """Draw K candidate chunks in a single batched predict_action.
+
+                Broadcasts each obs entry to batch dim K so the diffusion UNet
+                runs one forward over K parallel trajectories with independent
+                Gaussian noise (K samples drawn from the current torch RNG).
+                Returns array shape (K, n_action_steps, 7).
+                """
+                if deterministic:
+                    sample_seed = int(seed) * 100000 + int(t) * 1000
+                    torch.manual_seed(sample_seed)
+                    if device.type == "cuda":
+                        torch.cuda.manual_seed(sample_seed)
+                batched = {k_: v.expand(K, *v.shape[1:]).contiguous()
+                           for k_, v in obs_dict.items()}
+                with torch.no_grad():
+                    result = policy.predict_action(batched)
+                chunks = result["action"].detach().cpu().numpy()
+                assert chunks.shape == (K, n_action_steps, 7), \
+                    f"expected ({K}, {n_action_steps}, 7), got {chunks.shape}"
+                return chunks.astype(np.float32, copy=False)
+
             if use_bon:
                 assert current_frame is not None
                 assert reward_image_path is not None
                 save_reward_image(current_frame, reward_image_path)
 
-                candidate_chunks = np.stack(
-                    [_sample_chunk(j) for j in range(int(bon_k))],
-                    axis=0,
-                )
+                if policy.__class__.__name__ in _BON_SAMPLER_REGISTRY:
+                    # Registered samplers (e.g. MLP) take a different code path;
+                    # keep them serial for now.
+                    candidate_chunks = np.stack(
+                        [_sample_chunk(j) for j in range(int(bon_k))],
+                        axis=0,
+                    )
+                else:
+                    candidate_chunks = _sample_chunks_batched(int(bon_k))
                 # Score the first `score_actions_per_candidate` actions of each
                 # candidate and average. Shape: (K * N, 7) flattened request
                 # to the verifier, then reshape (K, N) -> mean over N.
@@ -771,6 +829,11 @@ def main() -> None:
                              "(e.g. '17,50,3,9'). When set, --num-episodes "
                              "and --start-seed are ignored and one episode is "
                              "run per listed seed in order.")
+    parser.add_argument("--fix-seed", action="store_true",
+                        help="Use --start-seed for EVERY episode (no per-ep "
+                             "increment). All rollouts share the same env "
+                             "initial state AND the same diffusion noise, so "
+                             "they are bit-exact identical.")
     parser.add_argument("--max-steps", type=int, default=120,
                         help="Per-episode env step cap (env may also truncate).")
     parser.add_argument("--device", default="cuda:0")
@@ -834,7 +897,8 @@ def main() -> None:
 
     print(f"[eval] Creating SimplerEnv task: {args.task}")
     env = make_env(args.task)
-    instr = env.get_language_instruction() or args.task
+    _base_env = env.unwrapped if hasattr(env, "unwrapped") else env
+    instr = (_base_env.get_language_instruction() if hasattr(_base_env, "get_language_instruction") else None) or args.task
     print(f"[eval] instruction: {instr!r}")
     bon_k = max(1, int(args.bon_k))
     bon_score_num_actions = max(1, int(args.bon_score_num_actions))
@@ -912,7 +976,12 @@ def main() -> None:
     t0 = time.time()
 
     for i in range(num_episodes):
-        ep_seed = explicit_seeds[i] if explicit_seeds is not None else int(args.start_seed) + i
+        if explicit_seeds is not None:
+            ep_seed = explicit_seeds[i]
+        elif args.fix_seed:
+            ep_seed = int(args.start_seed)
+        else:
+            ep_seed = int(args.start_seed) + i
         capture = (i < save_videos_n)
         ep_t0 = time.time()
         try:

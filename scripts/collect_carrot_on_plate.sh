@@ -13,10 +13,16 @@
 
 set -e
 
+# Ensure loopback traffic bypasses the cluster's HTTP proxy (e.g. Squid on
+# Klone) so calls to the local action server at 127.0.0.1:$PORT aren't
+# routed through it. Outbound proxy is preserved.
+export no_proxy="127.0.0.1,localhost${no_proxy:+,$no_proxy}"
+export NO_PROXY="$no_proxy"
+
 START_INDEX=${1:-0}
 NUM=${2:-10000}
 SHARD=${3:-state0.zarr}
-OUT_DIR=${OUT_DIR:-data/carrot_on_plate}
+OUT_DIR=${OUT_DIR:-/gscratch/robotics/harine/data/carrot_on_plate}
 PORT=${ACTION_SERVER_PORT:-3200}
 N_SAMPLES=${INITIAL_SAMPLES:-4}
 

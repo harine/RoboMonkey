@@ -3,6 +3,11 @@
 # Exit on error
 set -e
 
+# Ensure loopback traffic bypasses the cluster's HTTP proxy (e.g. Squid on
+# Klone). Outbound proxy is preserved so pip/conda still work.
+export no_proxy="127.0.0.1,localhost${no_proxy:+,$no_proxy}"
+export NO_PROXY="$no_proxy"
+
 echo "Starting setup process..."
 
 # Function to check command status

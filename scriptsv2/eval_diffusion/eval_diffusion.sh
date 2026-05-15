@@ -179,7 +179,7 @@ export PYOPENGL_PLATFORM=${PYOPENGL_PLATFORM:-osmesa}
 export DISPLAY=""
 
 # Make `import diffusion_policy` work without needing to pip-install it.
-DP_ROOT="${DIFFUSION_POLICY_ROOT:-/home/harine/diffusion_policy}"
+DP_ROOT="${DIFFUSION_POLICY_ROOT:-/mmfs1/home/harine/diffusion_policy}"
 export PYTHONPATH="${DP_ROOT}:${PYTHONPATH:-}"
 
 # Run from the repo root so relative asset paths resolve.
@@ -212,6 +212,9 @@ fi
 if [[ "$VIZ_Q" == "1" ]]; then
     EXTRA_FLAGS+=(--viz-q)
 fi
+if [[ "${FIX_SEED:-0}" == "1" ]]; then
+    EXTRA_FLAGS+=(--fix-seed)
+fi
 
 echo "============================================================"
 echo "  diffusion_policy SimplerEnv eval"
@@ -235,8 +238,12 @@ echo "  reward_port  : $REWARD_SERVER_PORT"
 echo "  viz_q        : $VIZ_Q"
 echo "============================================================"
 
-xvfb-run --auto-servernum -s "-screen 0 640x480x24" \
-    python "$dir_path/eval_diffusion.py" \
+if command -v xvfb-run >/dev/null 2>&1; then
+    XVFB=(xvfb-run --auto-servernum -s "-screen 0 640x480x24")
+else
+    XVFB=()
+fi
+"${XVFB[@]}" python "$dir_path/eval_diffusion.py" \
         --checkpoint "$CKPT" \
         --num-episodes "$NUM_EPISODES" \
         --start-seed "$START_SEED" \

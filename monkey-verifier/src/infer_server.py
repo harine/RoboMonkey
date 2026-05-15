@@ -45,7 +45,7 @@ class RobotRewardModel:
     """LLaVA-based reward model. Supports either an HTTP server (`infer_server.py`)
     or in-process use (`from infer_server import RobotRewardModel`)."""
 
-    def __init__(self, use_kv_cache_prefix: bool = True):
+    def __init__(self, use_kv_cache_prefix: bool = False):
         # Parse arguments from environment variables and defaults based on the shell script
         model_args = ModelArguments(
             model_name_or_path=os.path.join(os.environ.get("MODEL_DIR", "./model_dir"),

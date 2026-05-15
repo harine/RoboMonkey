@@ -9,3 +9,10 @@ transfer_images/
 seed17_replan4/
 test_run/
 .claude/
+
+# generated eval / viz artifacts
+data/eval/
+plots/
+**/bon_q/
+*.mp4
+*.npz
