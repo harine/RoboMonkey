@@ -9,3 +9,7 @@
 	path = openvla-mini
 	url = https://github.com/harine/openvla-mini.git
 	branch = main-harine
+[submodule "diffusion_policy"]
+	path = diffusion_policy
+	url = git@github.com:sriyash421/diffusion_policy.git
+	branch = harine/inprocess_verifiers
