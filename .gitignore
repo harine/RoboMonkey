@@ -1,2 +1,11 @@
 model_dir
 **/__pycache__/
+
+# Datasets, eval outputs, plots, videos — large binaries, regenerated locally
+data/
+transfer_images/
+
+# Local run artifacts / scratch
+seed17_replan4/
+test_run/
+.claude/
