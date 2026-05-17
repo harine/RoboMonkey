@@ -1,5 +1,0 @@
-{"ep_idx": 0, "seed": 1000, "success": true, "truncated": false, "num_steps": 27, "duration_s": 1.9773082733154297, "video": "data/eval/videos_eggplant_unet/videos/ep000_seed1000_success.mp4"}
-{"ep_idx": 1, "seed": 1001, "success": true, "truncated": false, "num_steps": 24, "duration_s": 1.4839823246002197, "video": "data/eval/videos_eggplant_unet/videos/ep001_seed1001_success.mp4"}
-{"ep_idx": 2, "seed": 1002, "success": false, "truncated": true, "num_steps": 120, "duration_s": 7.39536190032959, "video": "data/eval/videos_eggplant_unet/videos/ep002_seed1002_truncated.mp4"}
-{"ep_idx": 3, "seed": 1003, "success": true, "truncated": false, "num_steps": 18, "duration_s": 1.329758644104004, "video": "data/eval/videos_eggplant_unet/videos/ep003_seed1003_success.mp4"}
-{"ep_idx": 4, "seed": 1004, "success": false, "truncated": true, "num_steps": 120, "duration_s": 7.497907400131226, "video": "data/eval/videos_eggplant_unet/videos/ep004_seed1004_truncated.mp4"}
