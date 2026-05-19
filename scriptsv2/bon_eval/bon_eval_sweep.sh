@@ -98,7 +98,13 @@ run_cell() {
     if [[ "${FIX_SEED:-0}" == "1" ]]; then
         fix_tag="_fixed"
     fi
-    local out="data/eval/bon/${RUN_NAME}/replan${REPLAN_N}_k${k}_score${SCORE_N}_startseed${seed}${fix_tag}"
+    local sel_tag=""
+    if [[ "${BON_SELECT:-argmax}" == "top3_weighted" ]]; then
+        sel_tag="_top3w"
+    elif [[ "${BON_SELECT:-argmax}" == "topk_weighted" ]]; then
+        sel_tag="_top${BON_TOPN:-3}w"
+    fi
+    local out="data/eval/bon/${RUN_NAME}/replan${REPLAN_N}_k${k}_score${SCORE_N}_startseed${seed}${fix_tag}${sel_tag}"
     local log_file="$out/eval_log.json"
     local cell_log="$WORK_DIR/seed${seed}_k${k}_gpu${gpu_id}.log"
 
@@ -115,6 +121,8 @@ run_cell() {
                 USE_EMA=1 \
                 REWARD_SERVER_PORT="${REWARD_SERVER_PORT:-0}" \
                 FIX_SEED="${FIX_SEED:-0}" \
+                BON_SELECT="${BON_SELECT:-argmax}" \
+                BON_TOPN="${BON_TOPN:-3}" \
                 VIZ_Q="${VIZ_Q:-0}" \
                 bash scriptsv2/eval_diffusion/eval_diffusion.sh \
                     "$UNET_CKPT" "$NUM_EPISODES" "$out" \

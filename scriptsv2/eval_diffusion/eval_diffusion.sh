@@ -86,6 +86,8 @@ TASK="${TASK:-widowx_put_eggplant_in_basket}"
 BON_K="${BON_K:-1}"
 BON_REPLAN_EVERY_N_STEPS="${BON_REPLAN_EVERY_N_STEPS:-0}"
 BON_SCORE_NUM_ACTIONS="${BON_SCORE_NUM_ACTIONS:-1}"
+BON_SELECT="${BON_SELECT:-argmax}"
+BON_TOPN="${BON_TOPN:-3}"
 REWARD_SERVER_PORT="${REWARD_SERVER_PORT:-3100}"
 # Verifier batch size: all batches for a given replan are now dispatched in
 # parallel threads, so raising this reduces round-trips (GPU memory allowing).
@@ -203,6 +205,8 @@ fi
 EXTRA_FLAGS+=(--task "$TASK")
 EXTRA_FLAGS+=(--bon-k "$BON_K")
 EXTRA_FLAGS+=(--bon-score-num-actions "$BON_SCORE_NUM_ACTIONS")
+EXTRA_FLAGS+=(--bon-select "$BON_SELECT")
+EXTRA_FLAGS+=(--bon-topn "$BON_TOPN")
 EXTRA_FLAGS+=(--bon-replan-every-n-steps "$BON_REPLAN_EVERY_N_STEPS")
 EXTRA_FLAGS+=(--reward-server-port "$REWARD_SERVER_PORT")
 EXTRA_FLAGS+=(--reward-batch-size "$REWARD_BATCH_SIZE")

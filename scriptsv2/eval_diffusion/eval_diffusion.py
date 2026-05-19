@@ -424,6 +424,8 @@ def rollout_episode(
     reward_image_path: Path | None = None,
     bon_replan_every_n_steps: int = 0,
     bon_score_num_actions: int = 1,
+    bon_select: str = "argmax",
+    bon_topn: int = 3,
     viz_q: bool = False,
 ) -> Dict[str, Any]:
     """Run one episode and return per-step diagnostics.
@@ -602,10 +604,28 @@ def rollout_episode(
                     int(bon_k), score_actions_per_candidate
                 )
                 per_candidate_reward = rewards_matrix.mean(axis=1)
-                selected_index = int(np.argmax(per_candidate_reward))
-                selected_reward = float(per_candidate_reward[selected_index])
                 bon_rewards = per_candidate_reward.tolist()
-                actions_chunk = candidate_chunks[selected_index]
+                # Top-1 index is always recorded (viz/branch logging assumes a
+                # single selected_index even when we execute a blend).
+                selected_index = int(np.argmax(per_candidate_reward))
+
+                if bon_select in ("topk_weighted", "top3_weighted") and int(bon_k) > 1:
+                    _topn = 3 if bon_select == "top3_weighted" else int(bon_topn)
+                    n_top = min(max(1, _topn), int(bon_k))
+                    top_idx = np.argsort(per_candidate_reward)[::-1][:n_top]
+                    top_r = per_candidate_reward[top_idx].astype(np.float64)
+                    # Softmax over the top-n rewards (stable).
+                    w = np.exp(top_r - top_r.max())
+                    w = w / w.sum()
+                    actions_chunk = np.tensordot(
+                        w.astype(np.float32),
+                        candidate_chunks[top_idx],
+                        axes=([0], [0]),
+                    )
+                    selected_reward = float(np.dot(w, top_r))
+                else:
+                    actions_chunk = candidate_chunks[selected_index]
+                    selected_reward = float(per_candidate_reward[selected_index])
 
                 if bon_branches is not None and current_frame is not None:
                     bon_branches.append({
@@ -864,6 +884,19 @@ def main() -> None:
     parser.add_argument("--bon-score-num-actions", type=int, default=1,
                         help="Number of leading actions to score per candidate "
                              "(rewards are averaged). Default 1.")
+    parser.add_argument("--bon-select",
+                        choices=["argmax", "topk_weighted", "top3_weighted"],
+                        default="argmax",
+                        help="How to pick the executed chunk from the K scored "
+                             "candidates. 'argmax' (default): the single "
+                             "highest-reward chunk. 'topk_weighted': softmax-"
+                             "weighted average of the top-N chunks by reward "
+                             "(N = --bon-topn, falls back to fewer if K<N). "
+                             "'top3_weighted' is kept as an alias for "
+                             "topk_weighted with --bon-topn=3.")
+    parser.add_argument("--bon-topn", type=int, default=3,
+                        help="Number of top-reward candidates to softmax-blend "
+                             "when --bon-select=topk_weighted. Default 3.")
     parser.add_argument("--reward-server-port", type=int, default=3100,
                         help="RoboMonkey verifier server port (default 3100).")
     parser.add_argument("--reward-batch-size", type=int, default=2,
@@ -1001,6 +1034,8 @@ def main() -> None:
                 reward_image_path=Path(args.reward_image_path).absolute(),
                 bon_replan_every_n_steps=bon_replan_every_n_steps,
                 bon_score_num_actions=bon_score_num_actions,
+                bon_select=args.bon_select,
+                bon_topn=int(args.bon_topn),
                 viz_q=viz_q,
             )
         except Exception as e:
@@ -1035,6 +1070,8 @@ def main() -> None:
                 bon_k=np.int32(int(bon_k)),
                 bon_replan_every_n_steps=np.int32(int(bon_replan_every_n_steps)),
                 bon_score_num_actions=np.int32(int(bon_score_num_actions)),
+                bon_select=str(args.bon_select),
+                bon_topn=np.int32(int(args.bon_topn)),
                 branch_t=np.asarray([b["t"] for b in branches], dtype=np.int32),
                 candidate_actions=np.stack([b["candidate_actions"] for b in branches], axis=0),
                 per_candidate_rewards=np.stack([b["per_candidate_rewards"] for b in branches], axis=0),

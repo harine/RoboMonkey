@@ -42,6 +42,10 @@ TASK="${TASK:-widowx_put_eggplant_in_basket}"
 FIXED="${FIXED:-0}"
 FIX_TAG=""
 [[ "$FIXED" == "1" ]] && FIX_TAG="_fixed"
+# Read from top3-weighted cells (sweeps run with BON_SELECT=top3_weighted).
+TOP3W="${TOP3W:-0}"
+SEL_TAG=""
+[[ "$TOP3W" == "1" ]] && SEL_TAG="_top3w"
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
@@ -53,7 +57,7 @@ export PYOPENGL_PLATFORM=${PYOPENGL_PLATFORM:-osmesa}
 export DISPLAY=""
 
 TS="$(date +%Y%m%d_%H%M%S)"
-OUT_DIR="data/eval/bon/_summaries/bon_viz/${TS}/seed${START_SEED}_replan${REPLAN}${FIX_TAG}"
+OUT_DIR="data/eval/bon/_summaries/bon_viz/${TS}/seed${START_SEED}_replan${REPLAN}${FIX_TAG}${SEL_TAG}"
 mkdir -p "$OUT_DIR"
 
 echo "============================================================"
@@ -68,7 +72,7 @@ echo "  out_dir    : $OUT_DIR"
 echo "============================================================"
 
 for K in $KS; do
-    cell_dir="data/eval/bon/${RUN_NAME}/replan${REPLAN}_k${K}_score4_startseed${START_SEED}${FIX_TAG}"
+    cell_dir="data/eval/bon/${RUN_NAME}/replan${REPLAN}_k${K}_score4_startseed${START_SEED}${FIX_TAG}${SEL_TAG}"
     bon_q_dir="${cell_dir}/bon_q"
     if [[ ! -d "$bon_q_dir" ]]; then
         echo "[skip] k=$K  no $bon_q_dir"
@@ -110,15 +114,20 @@ for K in $KS; do
     for raw in "${raw_files[@]}"; do
         base="$(basename "${raw%.npz}")"          # ep000_seed17
         ep_idx="${base%%_*}"                      # ep000
-        status="$(python - "${raw%.npz}_aug.npz" <<'PY'
+        meta="$(python - "${raw%.npz}_aug.npz" <<'PY'
 import sys, numpy as np
 with np.load(sys.argv[1], allow_pickle=False) as z:
     s = bool(int(z["success"])); tr = bool(int(z["truncated"]))
-print("success" if s else ("truncated" if tr else "fail"))
+    sel = str(z["bon_select"]) if "bon_select" in z.files else "argmax"
+status = "success" if s else ("truncated" if tr else "fail")
+sel_tag = "argmax" if sel == "argmax" else "top3w"
+print(f"{status} {sel_tag}")
 PY
 )"
+        status="${meta%% *}"
+        sel_tag="${meta##* }"
         mv "${tmp_out}/${base}/${base}.mp4" \
-           "${OUT_DIR}/k${K}_${ep_idx}_${status}.mp4"
+           "${OUT_DIR}/k${K}_${ep_idx}_${sel_tag}_${status}.mp4"
     done
     rm -rf "$tmp_out"
     echo "[ok  ] k=$K  -> ${#raw_files[@]} mp4s"

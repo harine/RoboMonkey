@@ -246,6 +246,9 @@ def viz_one(
         seed = int(z["seed"])
         success = bool(int(z["success"]))
         truncated = bool(int(z["truncated"]))
+        bon_select = (str(z["bon_select"]) if "bon_select" in z.files
+                      else "argmax")
+        bon_topn = (int(z["bon_topn"]) if "bon_topn" in z.files else 3)
         branch_t = z["branch_t"].astype(np.int32)
         cand = z["candidate_actions"].astype(np.float32)         # (R, K, T, 7)
         Q = z["per_candidate_mean_reward"].astype(np.float32)    # (R, K)
@@ -277,9 +280,14 @@ def viz_one(
     n_frames = 0
     try:
         for r in indices:
+            if bon_select == "argmax":
+                sel_txt = f"chosen={int(sel[r])}"
+            else:
+                _n = 3 if bon_select == "top3_weighted" else bon_topn
+                sel_txt = f"top{_n}w(top={int(sel[r])})"
             title = (
                 f"[{status.upper()}]  {stem}  t={int(branch_t[r])}  "
-                f"branch={r}/{R-1}  K={cand.shape[1]}  chosen={int(sel[r])}"
+                f"branch={r}/{R-1}  K={cand.shape[1]}  {sel_txt}"
             )
             img = draw_branch(
                 frame=frames[r],
