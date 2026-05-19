@@ -1,0 +1,33 @@
+# Extra deps for running L2S training (and BoN eval) in-process inside the
+# `monkey-verifier` conda env. These are the diffusion_policy runtime
+# dependencies that aren't already installed by `monkey-verifier/requirements.txt`.
+#
+# Usage:
+#   conda activate monkey-verifier
+#   conda env update -n monkey-verifier -f monkey-verifier/l2s_inprocess_env.yaml
+#
+#   # One-off CUDA fix (can't be expressed cleanly via conda env update):
+#   #   monkey-verifier ships torch 2.0.1+cu117 but pip installed torchvision
+#   #   0.15.2+cu118, which fails at import with "different CUDA versions".
+#   pip install --force-reinstall --no-deps \
+#       torchvision==0.15.2+cu117 \
+#       --index-url https://download.pytorch.org/whl/cu117
+#
+# Add new entries here as additional ModuleNotFoundError's surface during
+# in-process L2S / BoN runs.
+
+name: monkey-verifier
+channels:
+  - defaults
+dependencies:
+  - pip
+  - pip:
+      - hydra-core==1.2.0
+      - dill
+      - diffusers>=0.30,<0.34
+      - wandb
+      - numba
+      # bitsandbytes >= 0.43 requires `torch.library.impl_abstract`, which
+      # only exists in torch >= 2.1. monkey-verifier ships torch 2.0.1+cu117,
+      # so pin to a 0.4x release that still has the legacy import path.
+      - bitsandbytes==0.41.3

@@ -46,7 +46,6 @@ from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional
 
 import numpy as np
-import requests
 import torch
 
 
@@ -158,75 +157,73 @@ def _actions_to_openvla_token_ids(actions: np.ndarray) -> np.ndarray:
     )
 
 
+_VERIFIER_CLIENT: Optional[Any] = None
+
+
+def _get_verifier_client(reward_server_port: int) -> Any:
+    """Lazily build a `VerifierClient` (singleton)."""
+    global _VERIFIER_CLIENT
+    if _VERIFIER_CLIENT is None:
+        verifier_src = Path(__file__).resolve().parents[2] / "monkey-verifier" / "src"
+        if str(verifier_src) not in sys.path:
+            sys.path.insert(0, str(verifier_src))
+        from verifier_client import VerifierClient  # noqa: WPS433
+        _VERIFIER_CLIENT = VerifierClient.from_port(int(reward_server_port))
+    return _VERIFIER_CLIENT
+
+
 def get_verifier_rewards(
     instruction: str,
-    image_path: Path,
+    image: Any,
     actions: np.ndarray,
     reward_server_port: int,
     reward_batch_size: int,
 ) -> List[float]:
-    """Score candidate 7D actions with the RoboMonkey verifier server.
+    """Score candidate 7D actions for one (instruction, image).
 
-    Sends ceil(N / reward_batch_size) HTTP requests. Each request is
-    dispatched in a thread so that TCP + server-side CPU work (image load,
-    tokenisation) overlaps across batches. GPU forward passes still serialize
-    inside the server, but the I/O overhead is amortised.
-
-    Set reward_batch_size >= total number of actions to send everything in a
-    single round-trip (fastest when GPU memory allows).
+    `reward_server_port <= 0` → in-process verifier (no HTTP, no disk image).
+    Otherwise POST to the running infer_server.py.
     """
-    import concurrent.futures
-
     actions = np.asarray(actions, dtype=np.float32)
     token_ids = _actions_to_openvla_token_ids(actions)
+    client = _get_verifier_client(reward_server_port)
 
+    if client.in_process:
+        return client.score_candidates(instruction, image, token_ids)
+
+    # HTTP: keep the existing parallel-chunked dispatch so a single huge batch
+    # doesn't OOM the server-side GPU. `reward_batch_size` caps rows per call.
+    import concurrent.futures
     num_batches = math.ceil(len(token_ids) / reward_batch_size)
     batches = [
         token_ids[i * reward_batch_size: min((i + 1) * reward_batch_size, len(token_ids))]
         for i in range(num_batches)
     ]
-
-    url = f"http://127.0.0.1:{reward_server_port}/process"
-
-    def _post_batch(batch: np.ndarray) -> List[float]:
-        payload = {
-            "instruction": instruction,
-            "image_path": str(image_path),
-            "action": batch.tolist(),
-        }
-        response = requests.post(url, json=payload, timeout=300)
-        response.raise_for_status()
-        return [float(r) for r in response.json()["rewards"]]
-
     if num_batches == 1:
-        return _post_batch(batches[0])
+        return client.score_candidates(instruction, str(image), batches[0])
 
     all_rewards: List[float] = [0.0] * len(token_ids)
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_batches) as pool:
         futures = {
-            pool.submit(_post_batch, batch): i * reward_batch_size
+            pool.submit(client.score_candidates, instruction, str(image), batch):
+                i * reward_batch_size
             for i, batch in enumerate(batches)
         }
         for future in concurrent.futures.as_completed(futures):
             start_idx = futures[future]
             rewards = future.result()
             all_rewards[start_idx: start_idx + len(rewards)] = rewards
-
     return all_rewards
 
 
 def check_verifier_health(reward_server_port: int) -> None:
-    """Ping the verifier server to fail-fast if it isn't running."""
-    url = f"http://127.0.0.1:{reward_server_port}/"
-    try:
-        response = requests.get(url, timeout=5)
-        response.raise_for_status()
-    except Exception as e:
-        raise RuntimeError(
-            f"Verifier server health check failed at {url}: {e!r}. "
-            "Start the RoboMonkey verifier server before running with bon_k > 1."
-        ) from e
-    print(f"[eval] Verifier server reachable at {url}")
+    """Fail-fast: ping HTTP server, or eagerly load the in-process model."""
+    client = _get_verifier_client(reward_server_port)
+    client.health_check()
+    if client.in_process:
+        print("[eval] In-process verifier ready.")
+    else:
+        print(f"[eval] Verifier server reachable at {client.server_url}/")
 
 
 # ---------------------------------------------------------------------------
@@ -520,8 +517,13 @@ def rollout_episode(
 
             if use_bon:
                 assert current_frame is not None
-                assert reward_image_path is not None
-                save_reward_image(current_frame, reward_image_path)
+                in_process_verifier = int(reward_server_port) <= 0
+                if in_process_verifier:
+                    verifier_image: Any = current_frame
+                else:
+                    assert reward_image_path is not None
+                    save_reward_image(current_frame, reward_image_path)
+                    verifier_image = reward_image_path
 
                 candidate_chunks = np.stack(
                     [_sample_chunk(j) for j in range(int(bon_k))],
@@ -535,7 +537,7 @@ def rollout_episode(
                 ].reshape(-1, 7)
                 flat_rewards = get_verifier_rewards(
                     instruction=instruction,
-                    image_path=reward_image_path,
+                    image=verifier_image,
                     actions=actions_to_score,
                     reward_server_port=int(reward_server_port),
                     reward_batch_size=int(reward_batch_size),
@@ -802,7 +804,10 @@ def main() -> None:
                         help="Number of leading actions to score per candidate "
                              "(rewards are averaged). Default 1.")
     parser.add_argument("--reward-server-port", type=int, default=3100,
-                        help="RoboMonkey verifier server port (default 3100).")
+                        help="RoboMonkey verifier server port (default 3100). "
+                             "Set to 0 to load the verifier in-process "
+                             "(no HTTP, no disk image) — requires the verifier "
+                             "Python deps to be importable in this env.")
     parser.add_argument("--reward-batch-size", type=int, default=2,
                         help="Verifier scoring batch size (default 2).")
     parser.add_argument("--reward-image-path",

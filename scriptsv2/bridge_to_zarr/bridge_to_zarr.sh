@@ -13,13 +13,14 @@
 #   bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh             # filter+download+convert
 #   DRY_RUN=1   bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh # match-only (skip download)
 #   SKIP_CONVERT=1 bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh  # download only
-#   OUT_DIR=/data/bridge ZARR_DIR=openvla-mini/data \
+#   OUT_DIR=/data/bridge ZARR_DIR=$HOME/data \
 #       bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
 #
 # Env vars:
 #   OUT_DIR                  filtered LeRobot dir            (default: data/bridge_v2_filtered)
 #   ZARR_DIR                 destination root for .zarr shards
-#                            (default: openvla-mini/data)
+#                            (default: $HOME/data); shards land under
+#                            $ZARR_DIR/<task>/state_only/
 #   CARROT_GROUP             filter spec for carrot task     (default: carrot_on_plate=carrot,plate)
 #   EGGPLANT_GROUP           filter spec for eggplant task   (default: eggplant_in_basket=eggplant,basket)
 #   EXCLUDES                 substrings disqualifying tasks  (default: "take carrot off")
@@ -35,7 +36,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
 OUT_DIR=${OUT_DIR:-data/bridge_v2_filtered}
-ZARR_DIR=${ZARR_DIR:-openvla-mini/data}
+ZARR_DIR=${ZARR_DIR:-$HOME/data}
 CARROT_GROUP=${CARROT_GROUP:-"carrot_on_plate=carrot,plate"}
 EGGPLANT_GROUP=${EGGPLANT_GROUP:-"eggplant_in_basket=eggplant,basket"}
 MAX_WORKERS=${MAX_WORKERS:-8}
@@ -102,14 +103,14 @@ echo "============================================================"
 "$PYTHON_BIN" "$SCRIPT_DIR/bridge_to_zarr.py" \
     --bridge_dir "$OUT_DIR" \
     --task_filter "put carrot on plate" \
-    --out "$ZARR_DIR/carrot_on_plate/bridge_v2_carrot.zarr" \
+    --out "$ZARR_DIR/carrot_on_plate/state_only/bridge_v2_carrot.zarr" \
     ${OVERWRITE_ZARR:+--overwrite}
 
 "$PYTHON_BIN" "$SCRIPT_DIR/bridge_to_zarr.py" \
     --bridge_dir "$OUT_DIR" \
     --task_filter "put eggplant in basket" \
-    --out "$ZARR_DIR/eggplant_in_basket/bridge_v2_eggplant.zarr" \
+    --out "$ZARR_DIR/eggplant_in_basket/state_only/bridge_v2_eggplant.zarr" \
     ${OVERWRITE_ZARR:+--overwrite}
 
 echo
-echo "[done] zarr shards under: $ZARR_DIR/{carrot_on_plate,eggplant_in_basket}/"
+echo "[done] zarr shards under: $ZARR_DIR/{carrot_on_plate,eggplant_in_basket}/state_only/"

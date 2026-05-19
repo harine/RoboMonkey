@@ -43,7 +43,10 @@
 #   BON_REPLAN_EVERY_N_STEPS    (default: 0 = chunk replan; N>0 replans after
 #                               every N executed actions)
 #   BON_SCORE_NUM_ACTIONS       (default: 1; average rewards over first N actions)
-#   REWARD_SERVER_PORT          (default: 3100)
+#   REWARD_SERVER_PORT          (default: 3100; set to 0 to load the verifier
+#                               in-process instead of via HTTP. In-process
+#                               mode skips the disk image hop and runs all K
+#                               candidates in one forward — much faster.)
 #   REWARD_BATCH_SIZE           (default: 2)
 #   VIZ_Q             (default: 0; when 1 *and* BON_K>1, save per-replan
 #                     candidate actions + verifier rewards (Q-values) to
