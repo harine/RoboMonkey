@@ -1,14 +1,15 @@
 #!/bin/bash
-# Evaluate a SearchPolicyRoboMonkey checkpoint (state-based L2S policy
-# with in-process RoboMonkey verifier) over N rollouts in SimplerEnv.
+# Evaluate a SearchPolicyRoboMonkey checkpoint (Gaussian or Diffusion variant
+# of the state-based L2S policy with in-process RoboMonkey verifier) over N
+# rollouts in SimplerEnv.
 #
 # Usage
 # -----
-#   bash scriptsv2/eval_search_policy/eval_search_policy.sh <checkpoint> [num_episodes] [output_dir]
+#   bash scriptsv2/eval_search/eval_search.sh <checkpoint> [num_episodes] [output_dir]
 #
 # Examples
 # --------
-#   bash scriptsv2/eval_search_policy/eval_search_policy.sh \
+#   bash scriptsv2/eval_search/eval_search.sh \
 #       /home/harine/diffusion_policy/data/outputs/2026.05.11/17.40.43_robomonkey_eggplant_search_state_corrupt_robomonkey_eggplant_state/checkpoints/latest.ckpt \
 #       100 \
 #       data/eval/eggplant_search_state_corrupt
@@ -25,6 +26,10 @@
 #   VIZ_Q         (default: 0; when 1, save per-replan sampled candidate
 #                 actions + verifier values + frame to
 #                 <output_dir>/search_q/ep<idx>_seed<seed>.npz)
+#   N_SAMPLES     (default: unset = policy.max_actions; override to sweep
+#                 search width. For values > max_actions the eval slides a
+#                 fixed (max_actions-1) context window — same context length
+#                 as training, but argmax picks the best of N candidates.)
 #   TASK          (default: widowx_put_eggplant_in_basket)
 #   CONDA_ENV     (default: simpler_env)
 
@@ -61,7 +66,9 @@ SAVE_VIDEOS="${SAVE_VIDEOS:-0}"
 VIDEO_FPS="${VIDEO_FPS:-10}"
 TASK="${TASK:-widowx_put_eggplant_in_basket}"
 MODE="${MODE:-argmax}"
+SOFTMAX_TEMP="${SOFTMAX_TEMP:-1.0}"  # used when MODE=softmax
 VIZ_Q="${VIZ_Q:-0}"               # 1 = dump sampled actions + values to search_q/
+N_SAMPLES="${N_SAMPLES:-}"        # empty = use policy.max_actions
 REPEAT_SEED="${REPEAT_SEED:-0}"   # 1 = every episode uses START_SEED
 
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
@@ -94,6 +101,9 @@ if [[ "$SAVE_VIDEOS" -gt 0 ]]; then
 fi
 EXTRA_FLAGS+=(--task "$TASK")
 EXTRA_FLAGS+=(--mode "$MODE")
+if [[ "$MODE" == "softmax" ]]; then
+    EXTRA_FLAGS+=(--softmax-temp "$SOFTMAX_TEMP")
+fi
 if [[ "$VIZ_Q" == "1" ]]; then
     EXTRA_FLAGS+=(--viz-q)
 fi
@@ -102,6 +112,9 @@ if [[ "$REPEAT_SEED" == "1" ]]; then
 fi
 if [[ -n "$SEEDS" ]]; then
     EXTRA_FLAGS+=(--seeds "$SEEDS")
+fi
+if [[ -n "$N_SAMPLES" ]]; then
+    EXTRA_FLAGS+=(--n-samples "$N_SAMPLES")
 fi
 
 echo "============================================================"
@@ -120,10 +133,15 @@ fi
 echo "  max_steps    : $MAX_STEPS"
 echo "  save_videos  : $SAVE_VIDEOS  (fps=$VIDEO_FPS)"
 echo "  mode         : $MODE"
+if [[ "$MODE" == "softmax" ]]; then
+    echo "  softmax_temp : $SOFTMAX_TEMP"
+fi
+echo "  n_samples    : ${N_SAMPLES:-<policy.max_actions>}"
+echo "  viz_q        : $VIZ_Q"
 echo "============================================================"
 
 xvfb-run --auto-servernum -s "-screen 0 640x480x24" \
-    python "$dir_path/eval_search_policy.py" \
+    python "$dir_path/eval_search.py" \
         --checkpoint "$CKPT" \
         --num-episodes "$NUM_EPISODES" \
         --start-seed "$START_SEED" \

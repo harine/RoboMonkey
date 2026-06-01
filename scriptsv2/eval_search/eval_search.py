@@ -1,18 +1,20 @@
-"""SimplerEnv eval for ``SearchPolicyRoboMonkey`` (state-based search policy).
+"""SimplerEnv eval for ``SearchPolicyRoboMonkey`` (Gaussian + Diffusion
+variants of the state-based search policy).
 
 The search policy has its own in-process verifier (built into the policy at
-hydra-instantiate time). Each ``predict_action`` call runs ``max_actions``
-candidate samples, each scored by the verifier, then the transformer trunk
-emits a final action chunk conditioned on the *full* (action, value) context
-— so there is **no argmax over candidates**; we read out the last token's
-mean.
+hydra-instantiate time). ``predict_n_actions`` runs N autoregressive
+candidate samples, each scored by the verifier. Modes:
 
-This script mirrors :mod:`scriptsv2.eval_diffusion.eval_diffusion` for the
-rollout / obs-window / video plumbing, but replaces the policy invocation
-with the search-aware call.
+  * ``argmax``  : pick the candidate with the highest verifier value.
+  * ``softmax`` : sample an index from ``softmax(values / T)``.
+  * ``refine``  : final transformer forward pass conditioned on the full
+                  (action, value) context, read the last token's
+                  ``dist.mean`` (Gaussian policy only).
+
+Reuses obs/action plumbing from ``scriptsv2.eval_diffusion.eval_diffusion``.
 
 Usage:
-    python eval_search_policy.py \\
+    python eval_search.py \\
         --checkpoint <ckpt.ckpt> --num-episodes 100 --task widowx_put_eggplant_in_basket \\
         --output-dir data/eval/eggplant_search_state_corrupt
 """
@@ -49,6 +51,8 @@ def _search_policy_predict(
     obs_dict: Dict[str, torch.Tensor],
     mode: str = "argmax",
     viz_q: bool = False,
+    n_samples: Optional[int] = None,
+    softmax_temp: float = 1.0,
 ) -> Dict[str, Any]:
     """Run the search policy.
 
@@ -79,9 +83,20 @@ def _search_policy_predict(
 
     To = int(policy.n_obs_steps)
     n_action_steps = int(policy.n_action_steps)
-    n_samples = int(policy.max_actions) if mode == "argmax" else int(policy.max_actions) - 1
+    if n_samples is None:
+        n_samples = int(policy.max_actions) if mode == "argmax" else int(policy.max_actions) - 1
+    else:
+        n_samples = int(n_samples)
+        if mode == "refine":
+            # refine mode reads dist.mean of the last transformer token; it
+            # needs at most (max_actions - 1) prior samples in the context.
+            n_samples = min(n_samples, int(policy.max_actions) - 1)
 
-    actions, values = policy.predict_action(
+    # predict_n_actions handles n_samples > max_actions by sliding a fixed
+    # (max_actions - 1) window of context over the autoregressive loop,
+    # which matches training-time context length while still returning all
+    # n_samples candidates for argmax selection.
+    actions, values = policy.predict_n_actions(
         obs_dict, policy.verifier, n_samples
     )  # (B, K, horizon, action_dim) ; (B, K)
     B = actions.shape[0]
@@ -103,6 +118,19 @@ def _search_policy_predict(
         out["chunk"] = best_action[:, start:end]
         out["selected_index"] = int(best[0].item())
         out["selected_value"] = float(values[0, int(best[0].item())].item())
+        return out
+
+    if mode == "softmax":
+        # Sample a candidate index from softmax(values / temp). temp -> 0 is
+        # argmax, temp -> inf is uniform. Default temp=1.0.
+        T = max(float(softmax_temp), 1e-6)
+        probs = torch.softmax(values / T, dim=1)  # (B, K)
+        sampled = torch.multinomial(probs, num_samples=1).squeeze(1)  # (B,)
+        chosen_action = actions[torch.arange(B, device=actions.device), sampled]
+        out["chunk"] = chosen_action[:, start:end]
+        out["selected_index"] = int(sampled[0].item())
+        out["selected_value"] = float(values[0, int(sampled[0].item())].item())
+        out["softmax_temp"] = float(T)
         return out
 
     # --- refine mode ---
@@ -136,7 +164,9 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
                     max_steps: int, instruction: str,
                     capture_frames: bool = False,
                     mode: str = "argmax",
-                    viz_q: bool = False) -> Dict[str, Any]:
+                    viz_q: bool = False,
+                    n_samples: Optional[int] = None,
+                    softmax_temp: float = 1.0) -> Dict[str, Any]:
     n_obs_steps = int(cfg.n_obs_steps)
     n_action_steps = int(cfg.n_action_steps)
 
@@ -160,6 +190,34 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
     pending_actions: List[np.ndarray] = []
     frames: List[np.ndarray] = []
     branches: Optional[List[Dict[str, Any]]] = [] if viz_q else None
+
+    # Camera params (intrinsic_cv (3,3) + extrinsic_cv (4,4) world->cam) for
+    # projecting candidate action trajectories into the rendered frame later.
+    # SimplerEnv widowx tasks use `3rd_view_camera`; fall back to whatever's
+    # available if that key is missing.
+    # base_pose: (7,) [px, py, pz, qw, qx, qy, qz] — the robot's base pose in
+    # world frame. Action xyz deltas are in BASE frame (e.g. widowx is yawed
+    # 180° relative to world), so the renderer needs R_world_base to project
+    # them correctly.
+    cam_K: Optional[np.ndarray] = None
+    cam_T_wc: Optional[np.ndarray] = None
+    base_pose_world: Optional[np.ndarray] = None
+    if viz_q:
+        try:
+            cam_params = obs.get("camera_param", {})
+            cam_name = "3rd_view_camera" if "3rd_view_camera" in cam_params \
+                else next(iter(cam_params), None)
+            if cam_name is not None:
+                cam_K = np.asarray(cam_params[cam_name]["intrinsic_cv"], dtype=np.float32)
+                cam_T_wc = np.asarray(cam_params[cam_name]["extrinsic_cv"], dtype=np.float32)
+        except Exception as e:
+            print(f"[eval] could not read camera_param for projection: {e!r}")
+        try:
+            bp = obs.get("agent", {}).get("base_pose", None)
+            if bp is not None:
+                base_pose_world = np.asarray(bp, dtype=np.float32)
+        except Exception as e:
+            print(f"[eval] could not read agent.base_pose: {e!r}")
 
     # Always need a frame for the in-process RoboMonkey verifier; capturing
     # for video output is a strict subset.
@@ -198,10 +256,16 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
                 1, n_obs_steps, *current_frame.shape
             )
             pred = _search_policy_predict(
-                policy, obs_dict, mode=mode, viz_q=viz_q
+                policy, obs_dict, mode=mode, viz_q=viz_q,
+                n_samples=n_samples, softmax_temp=softmax_temp,
             )
             chunk = pred["chunk"][0].detach().cpu().numpy()
             if branches is not None and current_frame is not None:
+                # Current EE world-frame xyz (start of every candidate's traj).
+                try:
+                    tcp_world = np.asarray(obs["extra"]["tcp_pose"], dtype=np.float32)[:3]
+                except Exception:
+                    tcp_world = np.zeros(3, dtype=np.float32)
                 branches.append({
                     "t": int(t),
                     "candidate_actions": pred["candidate_actions"].astype(
@@ -211,6 +275,7 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
                     "selected_index": int(pred.get("selected_index", -1)),
                     "selected_value": float(pred.get("selected_value", float("nan"))),
                     "frame": current_frame.astype(np.uint8, copy=True),
+                    "ee_xyz": tcp_world,
                 })
             replan_t = t
             replan_selected_index = pred.get("selected_index")
@@ -255,6 +320,9 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
         "steps": step_log,
         "frames": frames,
         "branches": branches,
+        "cam_K": cam_K,
+        "cam_T_wc": cam_T_wc,
+        "base_pose_world": base_pose_world,
     }
 
 
@@ -275,16 +343,27 @@ def main() -> None:
                         help="If set, every episode uses --start-seed (same "
                              "asset layout, different stochastic rollouts). "
                              "Otherwise episode i uses --start-seed + i.")
-    parser.add_argument("--mode", choices=["argmax", "refine"], default="argmax",
-                        help="argmax: pick the highest-verifier-value sample from "
-                             "the search loop (and log selected_index). "
+    parser.add_argument("--mode", choices=["argmax", "softmax", "refine"], default="argmax",
+                        help="argmax: pick the highest-verifier-value sample. "
+                             "softmax: sample index ~ softmax(values / temp), "
+                             "tunable via --softmax-temp. "
                              "refine: final transformer forward pass over the "
-                             "search trace, take dist.mean of last token.")
+                             "search trace, take dist.mean of last token "
+                             "(Gaussian policy only).")
+    parser.add_argument("--softmax-temp", type=float, default=1.0,
+                        help="Temperature for --mode softmax. Lower -> more "
+                             "argmax-like; higher -> more uniform. Default 1.0.")
     parser.add_argument("--viz-q", action="store_true",
                         help="Save per-replan sampled candidate actions + "
                              "verifier values + frame to "
                              "<output_dir>/search_q/ep<idx>_seed<seed>.npz "
                              "for later visualization (mirrors BoN viz_q).")
+    parser.add_argument("--n-samples", type=int, default=None,
+                        help="Override the number of search samples per "
+                             "replan. Default: policy.max_actions (argmax) "
+                             "or policy.max_actions-1 (refine). For values "
+                             "> max_actions, predict_n_actions slides a "
+                             "fixed (max_actions-1) context window.")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -358,11 +437,14 @@ def main() -> None:
                 seed=ep_seed, max_steps=int(args.max_steps),
                 instruction=str(instr), capture_frames=capture,
                 mode=str(args.mode), viz_q=viz_q,
+                n_samples=args.n_samples,
+                softmax_temp=float(args.softmax_temp),
             )
         except Exception as e:
             print(f"[eval] episode {i} (seed={ep_seed}) raised: {e!r}")
             ep = {"success": False, "truncated": False, "num_steps": 0,
-                  "error": repr(e), "steps": [], "frames": [], "branches": None}
+                  "error": repr(e), "steps": [], "frames": [], "branches": None,
+                  "cam_K": None, "cam_T_wc": None, "base_pose_world": None}
 
         durations.append(time.time() - ep_t0)
         successes += int(ep["success"])
@@ -391,6 +473,12 @@ def main() -> None:
         if viz_q_dir is not None and ep.get("branches"):
             br = ep["branches"]
             npz_path = viz_q_dir / f"ep{i:03d}_seed{ep_seed}.npz"
+            extra_proj = {}
+            if ep.get("cam_K") is not None and ep.get("cam_T_wc") is not None:
+                extra_proj["cam_K"] = ep["cam_K"]
+                extra_proj["cam_T_wc"] = ep["cam_T_wc"]
+            if ep.get("base_pose_world") is not None:
+                extra_proj["base_pose_world"] = ep["base_pose_world"]
             np.savez_compressed(
                 npz_path,
                 seed=np.int32(ep_seed),
@@ -398,6 +486,9 @@ def main() -> None:
                 success=np.int32(int(ep["success"])),
                 truncated=np.int32(int(ep["truncated"])),
                 num_steps=np.int32(int(ep["num_steps"])),
+                ee_xyz=np.stack([b.get("ee_xyz", np.zeros(3, dtype=np.float32))
+                                 for b in br], axis=0),
+                **extra_proj,
                 mode=str(args.mode),
                 max_actions=np.int32(int(policy.max_actions)),
                 branch_t=np.asarray([b["t"] for b in br], dtype=np.int32),

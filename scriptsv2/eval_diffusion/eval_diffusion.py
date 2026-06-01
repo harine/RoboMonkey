@@ -451,6 +451,29 @@ def rollout_episode(
         [] if (viz_q and use_bon) else None
     )
 
+    # Camera intrinsic/extrinsic + robot base pose for action+Q overlay
+    # rendering. Captured once at reset; action xyz deltas are in BASE
+    # frame so the renderer rotates them via R_world_base before projecting.
+    cam_K: Optional[np.ndarray] = None
+    cam_T_wc: Optional[np.ndarray] = None
+    base_pose_world: Optional[np.ndarray] = None
+    if viz_q and use_bon:
+        try:
+            cam_params = obs.get("camera_param", {})
+            cam_name = "3rd_view_camera" if "3rd_view_camera" in cam_params \
+                else next(iter(cam_params), None)
+            if cam_name is not None:
+                cam_K = np.asarray(cam_params[cam_name]["intrinsic_cv"], dtype=np.float32)
+                cam_T_wc = np.asarray(cam_params[cam_name]["extrinsic_cv"], dtype=np.float32)
+        except Exception as e:
+            print(f"[eval] could not read camera_param for projection: {e!r}")
+        try:
+            bp = obs.get("agent", {}).get("base_pose", None)
+            if bp is not None:
+                base_pose_world = np.asarray(bp, dtype=np.float32)
+        except Exception as e:
+            print(f"[eval] could not read agent.base_pose: {e!r}")
+
     # Lazy import (only when we actually need camera frames)
     if capture_frames or use_bon:
         from simpler_env.utils.env.observation_utils import (
@@ -552,6 +575,12 @@ def rollout_episode(
                 actions_chunk = candidate_chunks[selected_index]
 
                 if bon_branches is not None and current_frame is not None:
+                    try:
+                        tcp_world = np.asarray(
+                            obs["extra"]["tcp_pose"], dtype=np.float32,
+                        )[:3]
+                    except Exception:
+                        tcp_world = np.zeros(3, dtype=np.float32)
                     bon_branches.append({
                         "t": int(t),
                         "candidate_actions": candidate_chunks.astype(np.float32, copy=True),
@@ -560,6 +589,7 @@ def rollout_episode(
                         "selected_index": int(selected_index),
                         "selected_reward": float(selected_reward),
                         "frame": current_frame.astype(np.uint8, copy=True),
+                        "ee_xyz": tcp_world,
                     })
             else:
                 actions_chunk = _sample_chunk(0)
@@ -611,6 +641,9 @@ def rollout_episode(
         "steps": step_log,
         "frames": frames,
         "bon_branches": bon_branches,
+        "cam_K": cam_K,
+        "cam_T_wc": cam_T_wc,
+        "base_pose_world": base_pose_world,
     }
 
 
@@ -724,8 +757,46 @@ def _sample_mlp_action(policy, obs_dict) -> Dict[str, torch.Tensor]:
     }
 
 
+def _sample_search_policy_action(policy, obs_dict) -> Dict[str, torch.Tensor]:
+    """One candidate sample from a SearchPolicyRoboMonkey* checkpoint.
+
+    These policies expose ``predict_n_actions(obs_dict, verifier, n)`` rather
+    than the BaseImagePolicy ``predict_action(obs_dict)`` signature. We draw a
+    single candidate (no internal best-of-N) so the outer BoN loop in
+    rollout_episode handles ranking via ``get_verifier_rewards``, matching the
+    behaviour of every other policy class in this registry.
+    """
+    # Filter obs_dict to what the policy's normalizer + verifier expect — the
+    # exact same trimming eval_search.py does so the RGB key survives for the
+    # in-process verifier.
+    known = set(policy.normalizer.params_dict.keys())
+    image_obs_key = getattr(getattr(policy, "verifier", None), "image_obs_key", None)
+    trimmed = {
+        k: v for k, v in obs_dict.items()
+        if k in known or k == image_obs_key
+    }
+
+    actions, _values = policy.predict_n_actions(
+        trimmed, policy.verifier, n_actions=1,
+    )  # (B, 1, horizon, action_dim) , (B, 1)
+    action_pred = actions[:, 0]                                  # (B, horizon, action_dim)
+    start = int(policy.n_obs_steps) - 1
+    end = start + int(policy.n_action_steps)
+    return {
+        "action": action_pred[:, start:end],
+        "action_pred": action_pred,
+    }
+
+
 _BON_SAMPLER_REGISTRY: Dict[str, Any] = {
     "MLPImagePolicy": _sample_mlp_action,
+    # Search policies: route to predict_n_actions so the BaseImagePolicy
+    # signature mismatch (`predict_action()` requires `verifier, n_actions`)
+    # doesn't crash the outer BoN loop.
+    "SearchPolicy": _sample_search_policy_action,
+    "SearchPolicyRoboMonkey": _sample_search_policy_action,
+    "SearchPolicyRoboMonkeyDiffusion": _sample_search_policy_action,
+    "SearchPolicyRoboMonkeyDiffusionNoiseCond": _sample_search_policy_action,
 }
 
 
@@ -749,10 +820,14 @@ def _sample_action_chunk(
         if device.type == "cuda":
             torch.cuda.manual_seed(int(sample_seed))
 
-    if use_bon:
-        sampler = _BON_SAMPLER_REGISTRY.get(policy.__class__.__name__)
-        if sampler is not None:
-            return sampler(policy, obs_dict)
+    sampler = _BON_SAMPLER_REGISTRY.get(policy.__class__.__name__)
+    if sampler is not None:
+        # The registry covers both the BoN candidate-sampling path (called
+        # multiple times per replan) and the no-BoN single-shot path. Without
+        # this, policies whose `predict_action` signature differs from the
+        # BaseImagePolicy contract (e.g. SearchPolicyRoboMonkeyDiffusion needs
+        # `verifier` and `n_actions`) crash with TypeError when bon_k=1.
+        return sampler(policy, obs_dict)
     return policy.predict_action(obs_dict)
 
 
@@ -943,7 +1018,8 @@ def main() -> None:
             print(f"[eval] episode {i} (seed={ep_seed}) raised: {e!r}")
             ep = {"success": False, "truncated": False, "num_steps": 0,
                   "error": repr(e), "steps": [], "frames": [],
-                  "bon_branches": None}
+                  "bon_branches": None, "cam_K": None, "cam_T_wc": None,
+                  "base_pose_world": None}
 
         durations.append(time.time() - ep_t0)
         successes += int(ep["success"])
@@ -961,6 +1037,15 @@ def main() -> None:
         if bon_q_dir is not None and ep.get("bon_branches"):
             branches = ep["bon_branches"]
             npz_path = bon_q_dir / f"ep{i:03d}_seed{ep_seed}.npz"
+            extra_proj: Dict[str, np.ndarray] = {}
+            if ep.get("cam_K") is not None and ep.get("cam_T_wc") is not None:
+                extra_proj["cam_K"] = ep["cam_K"]
+                extra_proj["cam_T_wc"] = ep["cam_T_wc"]
+            if ep.get("base_pose_world") is not None:
+                extra_proj["base_pose_world"] = ep["base_pose_world"]
+            # render_q.py reads `values` + `selected_value` (per-candidate
+            # mean reward + chosen mean reward). We alias the BoN keys to
+            # those names so a single render script handles both eval flows.
             np.savez_compressed(
                 npz_path,
                 seed=np.int32(ep_seed),
@@ -971,13 +1056,20 @@ def main() -> None:
                 bon_k=np.int32(int(bon_k)),
                 bon_replan_every_n_steps=np.int32(int(bon_replan_every_n_steps)),
                 bon_score_num_actions=np.int32(int(bon_score_num_actions)),
+                mode="bon",
+                max_actions=np.int32(int(bon_k)),
                 branch_t=np.asarray([b["t"] for b in branches], dtype=np.int32),
                 candidate_actions=np.stack([b["candidate_actions"] for b in branches], axis=0),
                 per_candidate_rewards=np.stack([b["per_candidate_rewards"] for b in branches], axis=0),
                 per_candidate_mean_reward=np.stack([b["per_candidate_mean_reward"] for b in branches], axis=0),
+                values=np.stack([b["per_candidate_mean_reward"] for b in branches], axis=0),
                 selected_index=np.asarray([b["selected_index"] for b in branches], dtype=np.int32),
                 selected_reward=np.asarray([b["selected_reward"] for b in branches], dtype=np.float32),
+                selected_value=np.asarray([b["selected_reward"] for b in branches], dtype=np.float32),
                 frames=np.stack([b["frame"] for b in branches], axis=0),
+                ee_xyz=np.stack([b.get("ee_xyz", np.zeros(3, dtype=np.float32))
+                                 for b in branches], axis=0),
+                **extra_proj,
             )
             print(f"[eval]   saved Q-values -> {npz_path} ({len(branches)} branches)")
 
