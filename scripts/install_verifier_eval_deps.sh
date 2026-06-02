@@ -58,6 +58,13 @@ pip install \
     "numcodecs<0.14"
 
 # ------------------------------------------------------------------
+# 2b. Vulkan loader (libvulkan.so.1). SAPIEN dlopen's it at import time;
+#     this box has no system libvulkan, so pull the loader into the env.
+#     (Actual GPU rendering still needs a Vulkan ICD on the compute node.)
+# ------------------------------------------------------------------
+conda install -y -c conda-forge libvulkan-loader
+
+# ------------------------------------------------------------------
 # 3. SimplerEnv runtime deps that are NOT in monkey-verifier already.
 #    Skip anything that would downgrade torch/transformers/numpy.
 # ------------------------------------------------------------------

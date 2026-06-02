@@ -183,15 +183,20 @@ export MUJOCO_GL=${MUJOCO_GL:-osmesa}
 export PYOPENGL_PLATFORM=${PYOPENGL_PLATFORM:-osmesa}
 export DISPLAY=""
 
-# Make `import diffusion_policy` work without needing to pip-install it.
-DP_ROOT="${DIFFUSION_POLICY_ROOT:-/mmfs1/home/harine/diffusion_policy}"
-export PYTHONPATH="${DP_ROOT}:${PYTHONPATH:-}"
-
 # Run from the repo root so relative asset paths resolve.
 full_path="$(realpath "$0")"
 dir_path="$(dirname "$full_path")"
 repo_root="$(cd "$dir_path/../.." && pwd)"
 cd "$repo_root"
+
+# Make `import diffusion_policy` work without needing to pip-install it.
+# Default to the in-repo submodule, NOT the stale standalone ~/diffusion_policy
+# clone (which lacks search_policy_robomonkey). Export DIFFUSION_POLICY_ROOT
+# too: eval_diffusion.py keys its sys.path.insert(0, ...) off that env var,
+# not PYTHONPATH.
+DP_ROOT="${DIFFUSION_POLICY_ROOT:-${repo_root}/diffusion_policy}"
+export DIFFUSION_POLICY_ROOT="${DP_ROOT}"
+export PYTHONPATH="${DP_ROOT}:${PYTHONPATH:-}"
 
 mkdir -p "$OUT_DIR"
 

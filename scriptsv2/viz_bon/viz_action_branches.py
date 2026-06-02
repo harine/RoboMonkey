@@ -149,6 +149,8 @@ def draw_branch(
     intrinsic: np.ndarray,        # (3, 3)
     extrinsic: np.ndarray,        # (3, 4)
     title: str = "",
+    topk_indices: Optional[np.ndarray] = None,  # (<=4,) -1 padded
+    topk_weights: Optional[np.ndarray] = None,  # (<=4,) softmax weights
 ) -> Image.Image:
     img = Image.fromarray(frame.copy()).convert("RGB")
     draw = ImageDraw.Draw(img, "RGBA")
@@ -201,6 +203,43 @@ def draw_branch(
             draw.rectangle([bbox[0] - 2, bbox[1] - 2, bbox[2] + 2, bbox[3] + 2], fill=bg)
             draw.text((x + 6, y - 6), text, fill=(255, 255, 255, 255), font=font)
 
+    # Top-k highlight (weighted_topk4 mode): redraw the contributing
+    # candidates on top with a bright orange halo + their softmax weight.
+    topk_pairs = []
+    if topk_indices is not None:
+        for j, ki in enumerate(np.asarray(topk_indices).ravel().tolist()):
+            ki = int(ki)
+            if 0 <= ki < K:
+                w = (float(np.asarray(topk_weights).ravel()[j])
+                     if topk_weights is not None else float("nan"))
+                topk_pairs.append((ki, w))
+    HALO = (255, 165, 0)  # orange
+    for ki, w in topk_pairs:
+        pts, zs = uv[ki], z[ki]
+        valid = zs > 0.01
+        prev = None
+        for i in range(pts.shape[0]):
+            if not valid[i]:
+                prev = None
+                continue
+            x, y = float(pts[i, 0]), float(pts[i, 1])
+            if not (-50 <= x <= W + 50 and -50 <= y <= H + 50):
+                prev = None
+                continue
+            draw.ellipse([x - 5, y - 5, x + 5, y + 5],
+                         outline=HALO + (255,), width=2)
+            if prev is not None:
+                draw.line([prev[0], prev[1], x, y], fill=HALO + (255,), width=3)
+            prev = (x, y)
+        if pts.shape[0] > 0 and valid[-1]:
+            x, y = float(pts[-1, 0]), float(pts[-1, 1])
+            wtxt = f"#{ki} w={w:.2f}" if w == w else f"#{ki}"
+            f2 = _get_font(12)
+            bb = draw.textbbox((x + 6, y + 8), wtxt, font=f2)
+            draw.rectangle([bb[0] - 2, bb[1] - 2, bb[2] + 2, bb[3] + 2],
+                           fill=(180, 95, 0, 230))
+            draw.text((x + 6, y + 8), wtxt, fill=(255, 255, 255, 255), font=f2)
+
     # Header
     if title:
         font = _get_font(14)
@@ -219,10 +258,16 @@ def draw_branch(
     img.paste(Image.fromarray(grad), (lx, ly))
     draw.text((lx, ly + legend_h + 1), f"Q  {qmin:+.2f}", fill=(255, 255, 255), font=font_s)
     draw.text((lx + legend_w - 38, ly + legend_h + 1), f"{qmax:+.2f}", fill=(255, 255, 255), font=font_s)
-    # chosen swatch
+    # chosen / top-k swatch
     sw_x = lx + legend_w + 12
-    draw.rectangle([sw_x, ly, sw_x + 14, ly + legend_h], fill=(255, 30, 30))
-    draw.text((sw_x + 18, ly), "chosen", fill=(255, 255, 255), font=font_s)
+    if topk_pairs:
+        draw.rectangle([sw_x, ly, sw_x + 14, ly + legend_h],
+                       outline=(255, 165, 0), width=3)
+        draw.text((sw_x + 18, ly), f"top{len(topk_pairs)} (w)",
+                  fill=(255, 255, 255), font=font_s)
+    else:
+        draw.rectangle([sw_x, ly, sw_x + 14, ly + legend_h], fill=(255, 30, 30))
+        draw.text((sw_x + 18, ly), "chosen", fill=(255, 255, 255), font=font_s)
     return img
 
 
@@ -251,8 +296,15 @@ def viz_one(
         bon_topn = (int(z["bon_topn"]) if "bon_topn" in z.files else 3)
         branch_t = z["branch_t"].astype(np.int32)
         cand = z["candidate_actions"].astype(np.float32)         # (R, K, T, 7)
-        Q = z["per_candidate_mean_reward"].astype(np.float32)    # (R, K)
+        # BoN npz uses per_candidate_mean_reward; eval_search_policy uses values.
+        _qkey = ("per_candidate_mean_reward"
+                 if "per_candidate_mean_reward" in z.files else "values")
+        Q = z[_qkey].astype(np.float32)                          # (R, K)
         sel = z["selected_index"].astype(np.int32)               # (R,)
+        topk_idx = (z["topk_indices"].astype(np.int32)
+                    if "topk_indices" in z.files else None)      # (R, 4) or None
+        topk_w = (z["topk_weights"].astype(np.float32)
+                  if "topk_weights" in z.files else None)        # (R, 4) or None
         frames = z["frames"]                                     # (R, H, W, 3)
         tcp_p = z["tcp_world_p"].astype(np.float32)              # (R, 3)
         K_int = z["cam_intrinsic"].astype(np.float32)
@@ -271,7 +323,7 @@ def viz_one(
     video_path: Path | None = None
     if video:
         import imageio.v2 as imageio
-        video_path = out_dir / f"{stem}.mp4"
+        video_path = out_dir / f"{stem}_{status}.mp4"
         writer = imageio.get_writer(
             video_path, fps=fps, codec="libx264",
             quality=8, macro_block_size=1,
@@ -280,7 +332,15 @@ def viz_one(
     n_frames = 0
     try:
         for r in indices:
-            if bon_select == "argmax":
+            br_topk_idx = (topk_idx[r] if topk_idx is not None else None)
+            br_topk_w = (topk_w[r] if topk_w is not None else None)
+            has_topk = (
+                br_topk_idx is not None and int((br_topk_idx >= 0).sum()) > 0
+            )
+            if has_topk:
+                _kk = [int(x) for x in br_topk_idx if int(x) >= 0]
+                sel_txt = f"top{len(_kk)}w avg {_kk}"
+            elif bon_select == "argmax":
                 sel_txt = f"chosen={int(sel[r])}"
             else:
                 _n = 3 if bon_select == "top3_weighted" else bon_topn
@@ -298,6 +358,8 @@ def viz_one(
                 intrinsic=K_int,
                 extrinsic=K_ext[r] if K_ext.ndim == 3 else K_ext,
                 title=title,
+                topk_indices=br_topk_idx,
+                topk_weights=br_topk_w,
             )
             if writer is not None:
                 arr = np.asarray(img)
@@ -356,9 +418,10 @@ def main() -> None:
         sys.exit(2)
 
     for f in files:
-        ep_out_dir = args.out_dir / f.stem.replace("_aug", "")
+        # Flat: all episode outputs go directly under --out-dir (filenames
+        # already carry the episode stem, so no collisions).
         try:
-            viz_one(f, ep_out_dir, every=args.every,
+            viz_one(f, args.out_dir, every=args.every,
                     max_branches=args.max_branches,
                     video=args.video, fps=args.fps)
         except Exception as e:
