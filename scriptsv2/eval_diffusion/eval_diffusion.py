@@ -46,7 +46,6 @@ from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional
 
 import numpy as np
-import requests
 import torch
 
 
@@ -182,10 +181,13 @@ def _actions_to_openvla_token_ids(actions: np.ndarray) -> np.ndarray:
 _VERIFIER_CLIENT: Optional[Any] = None
 
 
-def _get_verifier_client(reward_server_port: int):
-    """Lazy-init a shared VerifierClient. port<=0 => in-process, else HTTP."""
+def _get_verifier_client(reward_server_port: int) -> Any:
+    """Lazy-init a shared `VerifierClient`. port<=0 => in-process, else HTTP."""
     global _VERIFIER_CLIENT
     if _VERIFIER_CLIENT is None:
+        verifier_src = Path(__file__).resolve().parents[2] / "monkey-verifier" / "src"
+        if str(verifier_src) not in sys.path:
+            sys.path.insert(0, str(verifier_src))
         from verifier_client import VerifierClient  # noqa: WPS433
         _VERIFIER_CLIENT = VerifierClient.from_port(int(reward_server_port))
         mode = "in-process" if _VERIFIER_CLIENT.in_process else _VERIFIER_CLIENT.server_url
@@ -195,7 +197,7 @@ def _get_verifier_client(reward_server_port: int):
 
 def get_verifier_rewards(
     instruction: str,
-    image_path: Path,
+    image: Any,
     actions: np.ndarray,
     reward_server_port: int,
     reward_batch_size: int,
@@ -209,15 +211,16 @@ def get_verifier_rewards(
     `reward_batch_size` is honored only for HTTP mode (parallel sub-batches);
     the in-process backend always submits one batched forward pass.
     """
-    import concurrent.futures
-
     actions = np.asarray(actions, dtype=np.float32)
     token_ids = _actions_to_openvla_token_ids(actions)
     client = _get_verifier_client(reward_server_port)
 
     if client.in_process:
-        return client.score_candidates(instruction, str(image_path), token_ids)
+        return client.score_candidates(instruction, image, token_ids)
 
+    # HTTP: keep the existing parallel-chunked dispatch so a single huge batch
+    # doesn't OOM the server-side GPU. `reward_batch_size` caps rows per call.
+    import concurrent.futures
     num_batches = math.ceil(len(token_ids) / reward_batch_size)
     if num_batches <= 1:
         return client.score_candidates(instruction, str(image_path), token_ids)
@@ -229,9 +232,8 @@ def get_verifier_rewards(
     all_rewards: List[float] = [0.0] * len(token_ids)
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_batches) as pool:
         futures = {
-            pool.submit(
-                client.score_candidates, instruction, str(image_path), batch
-            ): i * reward_batch_size
+            pool.submit(client.score_candidates, instruction, str(image), batch):
+                i * reward_batch_size
             for i, batch in enumerate(batches)
         }
         for future in concurrent.futures.as_completed(futures):
@@ -242,11 +244,11 @@ def get_verifier_rewards(
 
 
 def check_verifier_health(reward_server_port: int) -> None:
-    """Fail-fast if the verifier isn't reachable (in-process load or HTTP ping)."""
+    """Fail-fast: ping HTTP server, or eagerly load the in-process model."""
     client = _get_verifier_client(reward_server_port)
     client.health_check()
     if client.in_process:
-        print("[eval] In-process verifier loaded.")
+        print("[eval] In-process verifier ready.")
     else:
         print(f"[eval] Verifier server reachable at {client.server_url}/")
 
@@ -479,6 +481,29 @@ def rollout_episode(
         [] if (viz_q and use_bon) else None
     )
 
+    # Camera intrinsic/extrinsic + robot base pose for action+Q overlay
+    # rendering. Captured once at reset; action xyz deltas are in BASE
+    # frame so the renderer rotates them via R_world_base before projecting.
+    cam_K: Optional[np.ndarray] = None
+    cam_T_wc: Optional[np.ndarray] = None
+    base_pose_world: Optional[np.ndarray] = None
+    if viz_q and use_bon:
+        try:
+            cam_params = obs.get("camera_param", {})
+            cam_name = "3rd_view_camera" if "3rd_view_camera" in cam_params \
+                else next(iter(cam_params), None)
+            if cam_name is not None:
+                cam_K = np.asarray(cam_params[cam_name]["intrinsic_cv"], dtype=np.float32)
+                cam_T_wc = np.asarray(cam_params[cam_name]["extrinsic_cv"], dtype=np.float32)
+        except Exception as e:
+            print(f"[eval] could not read camera_param for projection: {e!r}")
+        try:
+            bp = obs.get("agent", {}).get("base_pose", None)
+            if bp is not None:
+                base_pose_world = np.asarray(bp, dtype=np.float32)
+        except Exception as e:
+            print(f"[eval] could not read agent.base_pose: {e!r}")
+
     # Lazy import (only when we actually need camera frames)
     if capture_frames or use_bon:
         from simpler_env.utils.env.observation_utils import (
@@ -575,8 +600,13 @@ def rollout_episode(
 
             if use_bon:
                 assert current_frame is not None
-                assert reward_image_path is not None
-                save_reward_image(current_frame, reward_image_path)
+                in_process_verifier = int(reward_server_port) <= 0
+                if in_process_verifier:
+                    verifier_image: Any = current_frame
+                else:
+                    assert reward_image_path is not None
+                    save_reward_image(current_frame, reward_image_path)
+                    verifier_image = reward_image_path
 
                 if policy.__class__.__name__ in _BON_SAMPLER_REGISTRY:
                     # Registered samplers (e.g. MLP) take a different code path;
@@ -595,7 +625,7 @@ def rollout_episode(
                 ].reshape(-1, 7)
                 flat_rewards = get_verifier_rewards(
                     instruction=instruction,
-                    image_path=reward_image_path,
+                    image=verifier_image,
                     actions=actions_to_score,
                     reward_server_port=int(reward_server_port),
                     reward_batch_size=int(reward_batch_size),
@@ -628,6 +658,12 @@ def rollout_episode(
                     selected_reward = float(per_candidate_reward[selected_index])
 
                 if bon_branches is not None and current_frame is not None:
+                    try:
+                        tcp_world = np.asarray(
+                            obs["extra"]["tcp_pose"], dtype=np.float32,
+                        )[:3]
+                    except Exception:
+                        tcp_world = np.zeros(3, dtype=np.float32)
                     bon_branches.append({
                         "t": int(t),
                         "candidate_actions": candidate_chunks.astype(np.float32, copy=True),
@@ -636,6 +672,7 @@ def rollout_episode(
                         "selected_index": int(selected_index),
                         "selected_reward": float(selected_reward),
                         "frame": current_frame.astype(np.uint8, copy=True),
+                        "ee_xyz": tcp_world,
                     })
             else:
                 actions_chunk = _sample_chunk(0)
@@ -687,6 +724,9 @@ def rollout_episode(
         "steps": step_log,
         "frames": frames,
         "bon_branches": bon_branches,
+        "cam_K": cam_K,
+        "cam_T_wc": cam_T_wc,
+        "base_pose_world": base_pose_world,
     }
 
 
@@ -800,8 +840,46 @@ def _sample_mlp_action(policy, obs_dict) -> Dict[str, torch.Tensor]:
     }
 
 
+def _sample_search_policy_action(policy, obs_dict) -> Dict[str, torch.Tensor]:
+    """One candidate sample from a SearchPolicyRoboMonkey* checkpoint.
+
+    These policies expose ``predict_n_actions(obs_dict, verifier, n)`` rather
+    than the BaseImagePolicy ``predict_action(obs_dict)`` signature. We draw a
+    single candidate (no internal best-of-N) so the outer BoN loop in
+    rollout_episode handles ranking via ``get_verifier_rewards``, matching the
+    behaviour of every other policy class in this registry.
+    """
+    # Filter obs_dict to what the policy's normalizer + verifier expect — the
+    # exact same trimming eval_search.py does so the RGB key survives for the
+    # in-process verifier.
+    known = set(policy.normalizer.params_dict.keys())
+    image_obs_key = getattr(getattr(policy, "verifier", None), "image_obs_key", None)
+    trimmed = {
+        k: v for k, v in obs_dict.items()
+        if k in known or k == image_obs_key
+    }
+
+    actions, _values = policy.predict_n_actions(
+        trimmed, policy.verifier, n_actions=1,
+    )  # (B, 1, horizon, action_dim) , (B, 1)
+    action_pred = actions[:, 0]                                  # (B, horizon, action_dim)
+    start = int(policy.n_obs_steps) - 1
+    end = start + int(policy.n_action_steps)
+    return {
+        "action": action_pred[:, start:end],
+        "action_pred": action_pred,
+    }
+
+
 _BON_SAMPLER_REGISTRY: Dict[str, Any] = {
     "MLPImagePolicy": _sample_mlp_action,
+    # Search policies: route to predict_n_actions so the BaseImagePolicy
+    # signature mismatch (`predict_action()` requires `verifier, n_actions`)
+    # doesn't crash the outer BoN loop.
+    "SearchPolicy": _sample_search_policy_action,
+    "SearchPolicyRoboMonkey": _sample_search_policy_action,
+    "SearchPolicyRoboMonkeyDiffusion": _sample_search_policy_action,
+    "SearchPolicyRoboMonkeyDiffusionNoiseCond": _sample_search_policy_action,
 }
 
 
@@ -825,10 +903,14 @@ def _sample_action_chunk(
         if device.type == "cuda":
             torch.cuda.manual_seed(int(sample_seed))
 
-    if use_bon:
-        sampler = _BON_SAMPLER_REGISTRY.get(policy.__class__.__name__)
-        if sampler is not None:
-            return sampler(policy, obs_dict)
+    sampler = _BON_SAMPLER_REGISTRY.get(policy.__class__.__name__)
+    if sampler is not None:
+        # The registry covers both the BoN candidate-sampling path (called
+        # multiple times per replan) and the no-BoN single-shot path. Without
+        # this, policies whose `predict_action` signature differs from the
+        # BaseImagePolicy contract (e.g. SearchPolicyRoboMonkeyDiffusion needs
+        # `verifier` and `n_actions`) crash with TypeError when bon_k=1.
+        return sampler(policy, obs_dict)
     return policy.predict_action(obs_dict)
 
 
@@ -898,7 +980,10 @@ def main() -> None:
                         help="Number of top-reward candidates to softmax-blend "
                              "when --bon-select=topk_weighted. Default 3.")
     parser.add_argument("--reward-server-port", type=int, default=3100,
-                        help="RoboMonkey verifier server port (default 3100).")
+                        help="RoboMonkey verifier server port (default 3100). "
+                             "Set to 0 to load the verifier in-process "
+                             "(no HTTP, no disk image) — requires the verifier "
+                             "Python deps to be importable in this env.")
     parser.add_argument("--reward-batch-size", type=int, default=2,
                         help="Verifier scoring batch size (default 2).")
     parser.add_argument("--reward-image-path",
@@ -1042,7 +1127,8 @@ def main() -> None:
             print(f"[eval] episode {i} (seed={ep_seed}) raised: {e!r}")
             ep = {"success": False, "truncated": False, "num_steps": 0,
                   "error": repr(e), "steps": [], "frames": [],
-                  "bon_branches": None}
+                  "bon_branches": None, "cam_K": None, "cam_T_wc": None,
+                  "base_pose_world": None}
 
         durations.append(time.time() - ep_t0)
         successes += int(ep["success"])
@@ -1060,6 +1146,15 @@ def main() -> None:
         if bon_q_dir is not None and ep.get("bon_branches"):
             branches = ep["bon_branches"]
             npz_path = bon_q_dir / f"ep{i:03d}_seed{ep_seed}.npz"
+            extra_proj: Dict[str, np.ndarray] = {}
+            if ep.get("cam_K") is not None and ep.get("cam_T_wc") is not None:
+                extra_proj["cam_K"] = ep["cam_K"]
+                extra_proj["cam_T_wc"] = ep["cam_T_wc"]
+            if ep.get("base_pose_world") is not None:
+                extra_proj["base_pose_world"] = ep["base_pose_world"]
+            # render_q.py reads `values` + `selected_value` (per-candidate
+            # mean reward + chosen mean reward). We alias the BoN keys to
+            # those names so a single render script handles both eval flows.
             np.savez_compressed(
                 npz_path,
                 seed=np.int32(ep_seed),
@@ -1072,13 +1167,20 @@ def main() -> None:
                 bon_score_num_actions=np.int32(int(bon_score_num_actions)),
                 bon_select=str(args.bon_select),
                 bon_topn=np.int32(int(args.bon_topn)),
+                mode="bon",
+                max_actions=np.int32(int(bon_k)),
                 branch_t=np.asarray([b["t"] for b in branches], dtype=np.int32),
                 candidate_actions=np.stack([b["candidate_actions"] for b in branches], axis=0),
                 per_candidate_rewards=np.stack([b["per_candidate_rewards"] for b in branches], axis=0),
                 per_candidate_mean_reward=np.stack([b["per_candidate_mean_reward"] for b in branches], axis=0),
+                values=np.stack([b["per_candidate_mean_reward"] for b in branches], axis=0),
                 selected_index=np.asarray([b["selected_index"] for b in branches], dtype=np.int32),
                 selected_reward=np.asarray([b["selected_reward"] for b in branches], dtype=np.float32),
+                selected_value=np.asarray([b["selected_reward"] for b in branches], dtype=np.float32),
                 frames=np.stack([b["frame"] for b in branches], axis=0),
+                ee_xyz=np.stack([b.get("ee_xyz", np.zeros(3, dtype=np.float32))
+                                 for b in branches], axis=0),
+                **extra_proj,
             )
             print(f"[eval]   saved Q-values -> {npz_path} ({len(branches)} branches)")
 

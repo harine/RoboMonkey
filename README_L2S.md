@@ -72,15 +72,15 @@ SAVE_IMAGES=True bash scripts/collect_eggplant_in_basket.sh
 
 Output locations:
 
-- Carrot: [openvla-mini/data/carrot_on_plate/state0.zarr](openvla-mini/data/carrot_on_plate/state0.zarr)
-- Eggplant: [openvla-mini/data/eggplant_in_basket/state0.zarr](openvla-mini/data/eggplant_in_basket/state0.zarr)
+- Carrot: `~/data/carrot_on_plate/state_only/state0.zarr`
+- Eggplant: `~/data/eggplant_in_basket/state_only/state0.zarr`
 - Per-run logs land alongside the shard as `collect-<task>-<timestamp>.log`.
 
 ### 1c. Sanity-check a shard
 
 ```bash
 python scriptsv2/plot_zarr/plot_zarr.py \
-    --shard openvla-mini/data/carrot_on_plate/state0.zarr
+    --shard ~/data/carrot_on_plate/state_only/state0.zarr
 ```
 
 Writes `state0_dashboard.png`, `state0_start_positions.png`, and `state0_scatters.png` next to the shard. Multiple `--shard` arguments are merged into a single combined figure.
@@ -133,7 +133,7 @@ SKIP_CONVERT=1 bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
 
 Output locations after a full run:
 - Filtered LeRobot subset: [data/bridge_v2_filtered/](data/bridge_v2_filtered/) (meta + parquet + mp4 + `filter_summary.json`)
-- Zarr shards: `openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr` and `openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr`
+- Zarr shards: `~/data/carrot_on_plate/state_only/bridge_v2_carrot.zarr` and `~/data/eggplant_in_basket/state_only/bridge_v2_eggplant.zarr`
 
 ### 2c. Optional: visualize the filtered subset *before* converting
 
@@ -156,13 +156,13 @@ To run the convert stage manually (e.g. for a custom task filter):
 python scriptsv2/bridge_to_zarr/bridge_to_zarr.py \
     --bridge_dir data/bridge_v2_filtered \
     --task_filter "put carrot on plate" \
-    --out openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr
+    --out ~/data/carrot_on_plate/state_only/bridge_v2_carrot.zarr
 ```
 
 Output locations:
 
-- [openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr](openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr)
-- [openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr](openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr)
+- `~/data/carrot_on_plate/state_only/bridge_v2_carrot.zarr`
+- `~/data/eggplant_in_basket/state_only/bridge_v2_eggplant.zarr`
 
 ---
 
@@ -197,7 +197,92 @@ The state-based RoboMonkey search policy lives in
 configured by
 [diffusion_policy/diffusion_policy/config/robomonkey_eggplant_search_state.yaml](file:///home/harine/diffusion_policy/diffusion_policy/config/robomonkey_eggplant_search_state.yaml).
 
-The verifier needs the monkey-verifier HTTP server running on port 3100:
+The verifier has two backends, selected by `policy.verifier.server_url`:
+
+- **In-process (recommended)** — `policy.verifier.server_url=in_process`.
+  The training process loads `RobotRewardModel` directly and scores
+  (image, action) pairs in batched GPU forwards. No HTTP, no disk JPEGs,
+  no SIMPLER re-rendering — the dataset's `agentview_image` is fed
+  straight to the verifier. Requires the verifier deps importable in
+  the training env (easiest: train inside the `monkey-verifier` env, or
+  set `MONKEY_VERIFIER_SRC=/path/to/RoboMonkey/monkey-verifier/src`).
+  Routes through the shared client at
+  [monkey-verifier/src/verifier_client.py](monkey-verifier/src/verifier_client.py).
+- **HTTP server** — leave `server_url=http://127.0.0.1:3100` (default) and
+  start `infer_server.py` in a separate terminal. Slower, kept for the
+  case where the training and verifier envs are deliberately disjoint.
+
+`policy.corrupt_obs` toggles the DDPM-style obs-feature noising. The flag is
+baked into the run name (and therefore the saved hydra config + wandb run),
+so both runs land in distinct output dirs.
+
+### 3.1.a One-time `monkey-verifier` env setup (for in-process)
+
+The base `monkey-verifier` env is missing diffusion_policy's runtime deps.
+[monkey-verifier/l2s_inprocess_env.yaml](monkey-verifier/l2s_inprocess_env.yaml)
+collects every extra install we've hit (hydra-core, dill, diffusers, wandb,
+numba, bitsandbytes pin, …). Run once:
+
+```bash
+conda env update -n monkey-verifier -f monkey-verifier/l2s_inprocess_env.yaml
+
+# Plus the one-off CUDA mismatch fix that doesn't fit cleanly in conda yaml
+# (monkey-verifier ships torch+cu117 but pip installs torchvision+cu118):
+pip install --force-reinstall --no-deps \
+    torchvision==0.15.2+cu117 \
+    --index-url https://download.pytorch.org/whl/cu117
+```
+
+Append any further `ModuleNotFoundError`s to that yaml as you encounter them.
+
+### 3.1.b Launch (in-process)
+
+```bash
+conda activate monkey-verifier
+cd ~/diffusion_policy
+
+# Recommended starting point — fits a 32 GB GPU with headroom.
+ROBOMONKEY_PAIRED_CHUNK_SIZE=16 \
+python diffusion_policy/workspace/train_mlp_image_workspace.py \
+    --config-name=robomonkey_eggplant_search_state \
+    policy.corrupt_obs=True \
+    policy.verifier.server_url=in_process \
+    dataloader.batch_size=32 val_dataloader.batch_size=32 \
+    policy.max_actions=8
+
+# Vanilla search policy (no obs corruption) — same overrides.
+python diffusion_policy/workspace/train_mlp_image_workspace.py \
+    --config-name=robomonkey_eggplant_search_state \
+    policy.corrupt_obs=False \
+    policy.verifier.server_url=in_process \
+    dataloader.batch_size=32 val_dataloader.batch_size=32 \
+    policy.max_actions=8
+```
+
+Output dir: `~/diffusion_policy/data/outputs/<YYYY.MM.DD>/<HH.MM.SS_robomonkey_eggplant_search_state_{corrupt,clean}_<task_name>>/`
+(contains `checkpoints/`, hydra `config.yaml`, and wandb run metadata).
+
+### 3.1.c Throughput knobs
+
+The verifier dominates each training step: per step it does
+`(max_actions − 1)` calls × `batch_size` (image, action) pairs through
+LLaVA-7B. Tune these in order of impact:
+
+| Knob | Default | What it does |
+| --- | --- | --- |
+| `dataloader.batch_size` | 256 (yaml) → use **32** | Direct linear factor on verifier calls per step. |
+| `policy.max_actions` | 16 (yaml) → use **8** | Linear factor on verifier calls per step. |
+| `ROBOMONKEY_PAIRED_CHUNK_SIZE` env | 4 → use **16** | Rows per GPU forward inside one verifier call. Higher = better GPU utilization, more peak memory. Drop to 2/1 if OOM, raise to 24/32 if you have headroom. |
+| `ROBOMONKEY_IMAGE_FEAT_CACHE_SIZE` env | 128 | LRU of CLIP image features (~4.7 MB/image on GPU). Within one training step the same 32 batch images are reused for all `max_actions − 1` verifier calls, so this cuts CLIP forwards ~7×. |
+| `ROBOMONKEY_REWARD_CACHE_SIZE` env | 100000 | LRU of `(instruction, image, action_tokens) → reward`. Mostly helps converged-policy training and BoN sweeps where the same query repeats. Set to `0` to disable. |
+
+Watch the first few steps in `nvidia-smi`; if you're well under 32 GB,
+double the chunk size. Going from the yaml defaults
+(`batch_size=256, max_actions=16, chunk_size=4`) to
+(`batch_size=32, max_actions=8, chunk_size=16`) is roughly a 17×
+end-to-end speedup before caches.
+
+### 3.1.d HTTP server path (legacy)
 
 ```bash
 # terminal A — leave running
@@ -206,35 +291,17 @@ cd /home/harine/RoboMonkey/monkey-verifier/src
 python infer_server.py            # 0.0.0.0:3100
 ```
 
-`policy.corrupt_obs` toggles the DDPM-style obs-feature noising. The flag is
-baked into the run name (and therefore the saved hydra config + wandb run),
-so both runs land in distinct output dirs:
-
 ```bash
 cd ~/diffusion_policy
 
-# Noised search policy (obs-feature DDPM noise on)
-# → name = robomonkey_eggplant_search_state_corrupt
 python diffusion_policy/workspace/train_mlp_image_workspace.py \
     --config-name=robomonkey_eggplant_search_state \
     policy.corrupt_obs=True
 
-# Vanilla search policy (no obs corruption)
-# → name = robomonkey_eggplant_search_state_clean
 python diffusion_policy/workspace/train_mlp_image_workspace.py \
     --config-name=robomonkey_eggplant_search_state \
     policy.corrupt_obs=False
 ```
-
-Output dir: `~/diffusion_policy/data/outputs/<YYYY.MM.DD>/<HH.MM.SS_robomonkey_eggplant_search_state_{corrupt,clean}_<task_name>>/`
-(contains `checkpoints/`, hydra `config.yaml`, and wandb run metadata).
-
-Note: the current verifier (`RoboMonkeyStateVerifier`) renders an RGB frame
-on the fly from the saved state via SIMPLER. Once you re-collect the zarr
-with `SAVE_IMAGES=True bash scripts/collect_eggplant_in_basket.sh` (see §1b),
-you can swap `policy.verifier._target_` to the plain `RoboMonkeyVerifier`
-and feed `agentview_image` straight from the dataset for a much faster
-training step.
 
 ---
 
@@ -277,7 +344,42 @@ bash scriptsv2/eval_diffusion/eval_diffusion_both.sh <unet_ckpt> <mlp_ckpt> 50
 
 ### 4d. Best-of-N with the action verifier
 
-Spin up the verifier first (this is the same `infer_server.py` referenced in the main README):
+Two ways to run the verifier:
+
+- **In-process (recommended for `eval_diffusion`)** — `REWARD_SERVER_PORT=0`.
+  The eval script loads `RobotRewardModel` directly into the eval process and
+  scores all K candidates in a single GPU forward. No HTTP, no disk image
+  hop, the CLIP vision tower runs once per step (not K times), the prompt
+  template is tokenized once per instruction, and the LLaMA prefix is
+  prefilled once with a shared KV cache reused across candidates. A
+  `(instruction, image, action_tokens) → reward` LRU
+  (`ROBOMONKEY_REWARD_CACHE_SIZE`, default 100k) further short-circuits
+  exact repeats across rollouts. Requires the verifier deps (llava, peft,
+  bitsandbytes, …) importable in the eval env — easiest is to run inside
+  the `monkey-verifier` env (see §3.1.a for the one-time setup), or
+  pip-install the missing deps into `simpler_env`.
+
+- **HTTP server** — leave `REWARD_SERVER_PORT=3100` (default) and start
+  `infer_server.py` in a separate terminal as before. Use this when the eval
+  env can't import the verifier directly (e.g. shared GPU, separate Python
+  envs, or the existing search-policy training path in §3.1 that talks
+  to the server over HTTP).
+
+In-process (single GPU, no extra terminal):
+
+```bash
+TASK=widowx_put_eggplant_in_basket \
+BON_K=8 \
+BON_REPLAN_EVERY_N_STEPS=0 \
+BON_SCORE_NUM_ACTIONS=1 \
+REWARD_SERVER_PORT=0 \
+CONDA_ENV=monkey-verifier \
+bash scriptsv2/eval_diffusion/eval_diffusion.sh \
+    ~/diffusion_policy/data/outputs/2026.04.29/16.45.01_train_diffusion_unet_eggplant_in_basket_lowdim_eggplant_in_basket_lowdim/checkpoints/latest.ckpt \
+    100
+```
+
+HTTP server path (legacy):
 
 ```bash
 # terminal C — leave running
@@ -285,8 +387,6 @@ conda activate monkey-verifier
 cd monkey-verifier/src
 python infer_server.py        # default port 3100
 ```
-
-Then re-run the eval with `BON_K > 1`:
 
 ```bash
 TASK=widowx_put_eggplant_in_basket \
@@ -300,9 +400,14 @@ bash scriptsv2/eval_diffusion/eval_diffusion.sh \
     100
 ```
 
-Full ordered sweep over `BON_K ∈ {2,4,8,16,32,64}` for both architectures with resume support:
+Full ordered sweep over `BON_K ∈ {2,4,8,16,32,64}` for both architectures with resume support. `bon_eval.sh` forwards `REWARD_SERVER_PORT` and `CONDA_ENV` to every inner `eval_diffusion.sh` call, so the in-process toggle works identically here:
 
 ```bash
+# In-process verifier (recommended) — fastest, no extra terminal.
+REWARD_SERVER_PORT=0 CONDA_ENV=monkey-verifier \
+    bash scriptsv2/bon_eval/bon_eval.sh             # full sweep, 100 eps per cell
+
+# HTTP path (requires `infer_server.py` running in another terminal):
 bash scriptsv2/bon_eval/bon_eval.sh             # full sweep, 100 eps per cell
 bash scriptsv2/bon_eval/bon_eval.sh 5           # smoke test, 5 eps per cell
 ONLY_K="15" bash scriptsv2/bon_eval/bon_eval.sh # re-run just k=15
@@ -343,10 +448,10 @@ python scriptsv2/eval_diffusion/eval_summary.py data/eval/<run_name>/eval_log.js
 | --- | --- | --- |
 | Filtered Bridge V2 (parquet + mp4 + meta) | [data/bridge_v2_filtered/](data/bridge_v2_filtered/) | `scriptsv2/bridge_to_zarr/bridge_to_zarr.sh` |
 | Filter summary (matched tasks/episodes) | [data/bridge_v2_filtered/filter_summary.json](data/bridge_v2_filtered/filter_summary.json) | `scriptsv2/bridge_to_zarr/filter_bridge_v2.py` |
-| Synthetic carrot Zarr | [openvla-mini/data/carrot_on_plate/state0.zarr](openvla-mini/data/carrot_on_plate/state0.zarr) | `scripts/collect_carrot_on_plate.sh` |
-| Synthetic eggplant Zarr | [openvla-mini/data/eggplant_in_basket/state0.zarr](openvla-mini/data/eggplant_in_basket/state0.zarr) | `scripts/collect_eggplant_in_basket.sh` |
-| Bridge → carrot Zarr | [openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr](openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr) | `scriptsv2/bridge_to_zarr/bridge_to_zarr.py` |
-| Bridge → eggplant Zarr | [openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr](openvla-mini/data/eggplant_in_basket/bridge_v2_eggplant.zarr) | `scriptsv2/bridge_to_zarr/bridge_to_zarr.py` |
+| Synthetic carrot Zarr (state-only) | `~/data/carrot_on_plate/state_only/state0.zarr` | `scripts/collect_carrot_on_plate.sh` |
+| Synthetic eggplant Zarr (state-only) | `~/data/eggplant_in_basket/state_only/state0.zarr` | `scripts/collect_eggplant_in_basket.sh` |
+| Bridge → carrot Zarr | `~/data/carrot_on_plate/state_only/bridge_v2_carrot.zarr` | `scriptsv2/bridge_to_zarr/bridge_to_zarr.py` |
+| Bridge → eggplant Zarr | `~/data/eggplant_in_basket/state_only/bridge_v2_eggplant.zarr` | `scriptsv2/bridge_to_zarr/bridge_to_zarr.py` |
 | Trained checkpoints | `~/diffusion_policy/data/outputs/<date>/<run>/checkpoints/latest.ckpt` | `diffusion_policy` repo |
 | SIMPLER eval logs | [data/eval/&lt;run_name&gt;/](data/eval/) | `scriptsv2/eval_diffusion/eval_diffusion.sh` |
 | BON sweep logs | [data/eval/bon/](data/eval/bon/) | `scriptsv2/bon_eval/bon_eval.sh` |

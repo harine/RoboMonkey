@@ -76,7 +76,7 @@ def parse_args() -> argparse.Namespace:
         "--shard",
         type=Path,
         nargs="+",
-        default=[Path("openvla-mini/data/carrot_on_plate/state0.zarr")],
+        default=[Path.home() / "data/carrot_on_plate/state_only/state0.zarr"],
         help="Path(s) to collected .zarr shard(s). Multiple shards are merged before plotting.",
     )
     parser.add_argument(

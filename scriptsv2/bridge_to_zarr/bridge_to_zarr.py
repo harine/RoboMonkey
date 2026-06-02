@@ -32,7 +32,7 @@ Usage:
     python scriptsv2/bridge_to_zarr/bridge_to_zarr.py \
         --bridge_dir data/bridge_v2_filtered \
         --task_filter "put carrot on plate" \
-        --out openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr
+        --out ~/data/carrot_on_plate/state_only/bridge_v2_carrot.zarr
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("openvla-mini/data/carrot_on_plate/bridge_v2_carrot.zarr"),
+        default=Path.home() / "data/carrot_on_plate/state_only/bridge_v2_carrot.zarr",
         help="Destination .zarr shard (default: %(default)s).",
     )
     parser.add_argument(
