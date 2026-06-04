@@ -196,9 +196,29 @@ class RobotRewardModel:
         orig = ll.encode_images
         self._broadcast_image = True
         self._image_feat_cache: "OrderedDict[bytes, torch.Tensor]" = OrderedDict()
+        # Default raised 128 -> 512 so the per-image CLIP-feature cache survives a
+        # full L2S training batch (B=256) and is reused across the policy's
+        # `max_actions` autoregressive verifier calls instead of thrashing.
         self._image_feat_cache_size = int(
-            os.environ.get("ROBOMONKEY_IMAGE_FEAT_CACHE_SIZE", 128)
+            os.environ.get("ROBOMONKEY_IMAGE_FEAT_CACHE_SIZE", 512)
         )
+        # Per-row raw-image keys for the *current* paired forward, set by
+        # `_paired_chunk_forward`. When present (and length-matched) the feature
+        # cache keys on the cheap raw-image hash instead of re-hashing the large
+        # preprocessed float tensor every round. None outside paired scoring.
+        self._cur_image_keys = None
+        self._feat_cache_hits = 0
+        self._feat_cache_misses = 0
+        # Cache of preprocessed CLIP-input tensors (CPU), keyed by raw-image hash,
+        # so `_process_image` (PIL resize + JPEG roundtrip + CLIP preprocess) runs
+        # once per unique image instead of once per (image, action) verifier call.
+        self._proc_image_cache: "OrderedDict[bytes, torch.Tensor]" = OrderedDict()
+        self._proc_image_cache_size = int(
+            os.environ.get("ROBOMONKEY_PROC_IMAGE_CACHE_SIZE",
+                           self._image_feat_cache_size)
+        )
+        self._proc_cache_hits = 0
+        self._proc_cache_misses = 0
 
         def _hash_row(t: torch.Tensor) -> bytes:
             arr = t.detach().to(torch.float32).cpu().numpy()
@@ -216,7 +236,10 @@ class RobotRewardModel:
                 return orig(images)
 
             B = images.shape[0]
-            keys = [_hash_row(images[i]) for i in range(B)]
+            if self._cur_image_keys is not None and len(self._cur_image_keys) == B:
+                keys = self._cur_image_keys
+            else:
+                keys = [_hash_row(images[i]) for i in range(B)]
             feat_rows: list = [None] * B
             missing: list = []
             for i, k in enumerate(keys):
@@ -224,9 +247,11 @@ class RobotRewardModel:
                 if cached is not None:
                     cache.move_to_end(k)
                     feat_rows[i] = cached
+                    self._feat_cache_hits += 1
                 else:
                     missing.append(i)
             if missing:
+                self._feat_cache_misses += len(missing)
                 new_feats = orig(torch.stack([images[i] for i in missing], dim=0))
                 for j, i in enumerate(missing):
                     f = new_feats[j].detach()
@@ -422,23 +447,68 @@ class RobotRewardModel:
             self._broadcast_image = prev_broadcast
         return rewards
 
+    @staticmethod
+    def _raw_image_key(image_input) -> bytes:
+        """Cheap content hash of a raw verifier image (path str / HWC uint8
+        ndarray / PIL.Image), used to dedupe identical images across the policy's
+        autoregressive verifier calls. Same observation -> same bytes -> same key."""
+        if isinstance(image_input, str):
+            payload = image_input.encode("utf-8")
+        elif isinstance(image_input, np.ndarray):
+            payload = np.ascontiguousarray(image_input).tobytes()
+        else:  # PIL.Image or array-like
+            payload = np.ascontiguousarray(np.asarray(image_input)).tobytes()
+        return hashlib.blake2b(payload, digest_size=16).digest()
+
+    def _process_image_cached(self, image_input, key: bytes):
+        """`_process_image` with an LRU cache keyed on the raw-image hash so the
+        PIL/JPEG/CLIP preprocessing runs once per unique image, not once per
+        (image, action) pair. Returns a CPU tensor (cloned from the cache)."""
+        cache = self._proc_image_cache
+        cap = self._proc_image_cache_size
+        if cap <= 0:
+            self._proc_cache_misses += 1
+            return self._process_image(image_input)
+        cached = cache.get(key)
+        if cached is not None:
+            cache.move_to_end(key)
+            self._proc_cache_hits += 1
+            return cached
+        self._proc_cache_misses += 1
+        t = self._process_image(image_input)
+        cache[key] = t
+        if len(cache) > cap:
+            cache.popitem(last=False)
+        return t
+
     def _paired_chunk_forward(self, instruction: str, images: list, actions: np.ndarray) -> list:
         input_ids = self._build_input_ids(instruction, actions)
         attention_mask = input_ids.ne(self.tokenizer.pad_token_id).long()
-        image_tensors = torch.stack([self._process_image(img) for img in images])
+        # Dedupe preprocessing + CLIP encoding across the same images recurring
+        # over the policy's autoregressive verifier calls: hash each raw image
+        # once, reuse the preprocessed tensor, and hand the keys to the feature
+        # cache (via `_cur_image_keys`) so the vision tower is skipped on hits.
+        keys = [self._raw_image_key(img) for img in images]
+        image_tensors = torch.stack(
+            [self._process_image_cached(img, k) for img, k in zip(images, keys)]
+        )
 
         device = next(self.model.parameters()).device
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
         image_tensors = image_tensors.to(device=device, dtype=torch.bfloat16)
 
-        with torch.inference_mode():
-            scores = self.model.forward(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                images=image_tensors,
-            )
-            rewards = scores.rewards
+        self._cur_image_keys = keys
+        try:
+            with torch.inference_mode():
+                scores = self.model.forward(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    images=image_tensors,
+                )
+                rewards = scores.rewards
+        finally:
+            self._cur_image_keys = None
         return rewards.detach().float().cpu().tolist()
 
     @staticmethod
@@ -517,6 +587,124 @@ class RobotRewardModel:
         last_hidden = suffix_out.hidden_states[-1][:, -1, :]
         last_hidden = last_hidden.type_as(self.model.reward_head.weight)
         return self.model.reward_head(last_hidden).squeeze(-1)
+
+    # ------------------------------------------------------------------
+    # Per-image prefix-KV cache (training: same images scored across the
+    # policy's `max_actions` autoregressive rounds). The image+instruction
+    # prefix (~96% of the sequence) is encoded once per image and its KV is
+    # reused across rounds; only the short action suffix is forwarded per round.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _slice_kv(past_kv, j: int):
+        """Slice row j of a batched KV cache -> list[(k,v)] per layer, batch 1."""
+        if hasattr(past_kv, "key_cache"):
+            pairs = zip(past_kv.key_cache, past_kv.value_cache)
+        else:
+            pairs = past_kv
+        return [(k[j:j + 1].contiguous(), v[j:j + 1].contiguous()) for (k, v) in pairs]
+
+    def _stack_kv(self, per_image):
+        """Concatenate N per-image list[(k,v)] caches into one batch-N cache,
+        matching the type the backbone produced (DynamicCache or legacy tuple)."""
+        n_layers = len(per_image[0])
+        Ks = [torch.cat([img[l][0] for img in per_image], dim=0) for l in range(n_layers)]
+        Vs = [torch.cat([img[l][1] for img in per_image], dim=0) for l in range(n_layers)]
+        proto = self._kv_proto
+        if proto is not None and hasattr(proto, "key_cache"):
+            from copy import copy as _copy
+            new = _copy(proto)
+            new.key_cache = Ks
+            new.value_cache = Vs
+            return new
+        return tuple((Ks[l], Vs[l]) for l in range(n_layers))
+
+    def clear_prefix_cache(self):
+        """Drop the per-image prefix-KV cache (call between image chunks so GPU
+        memory stays bounded by the chunk size, not the full batch)."""
+        self._prefix_kv_cache = {}
+        self._kv_proto = None
+
+    def get_rewards_paired_kvprefix(self, instruction: str, images: list,
+                                    actions, image_keys: list) -> list:
+        """Score B (image, action) pairs reusing cached image+instruction prefix
+        KV across calls with the same images (keyed by `image_keys`). The caller
+        must pass a small enough chunk that B prefixes fit in GPU memory and must
+        call `clear_prefix_cache()` between independent image chunks."""
+        if not hasattr(self, "_prefix_kv_cache"):
+            self._prefix_kv_cache = {}
+            self._kv_proto = None
+        actions = np.asarray(actions)
+        B = actions.shape[0]
+        if len(images) != B or len(image_keys) != B:
+            raise ValueError("images, actions, image_keys must share length B")
+        if instruction not in self._template_cache:
+            self._template_cache[instruction] = self._build_template(instruction)
+        template_ids, action_slot_idx = self._template_cache[instruction]
+        suffix_start = action_slot_idx
+
+        device = next(self.model.parameters()).device
+        backbone = self.model.backbone_model
+        backbone.set_adapter(self.model.adapter_name)
+        # The PEFT/LLaVA *wrapper* forward drops past_key_values (returns a tuple
+        # of None per layer). So we drive the inner Llama decoder directly: build
+        # multimodal inputs_embeds via prepare_inputs_labels_for_multimodal, then
+        # call get_decoder() with use_cache=True (which does populate KV).
+        llava = self._llava_model()
+        decoder = backbone.get_decoder()
+        decoder.config.use_cache = True
+        embed_tokens = decoder.embed_tokens
+        cache = self._prefix_kv_cache
+
+        with torch.inference_mode():
+            # 1) Prefill prefix KV for any images not yet cached.
+            miss = [i for i in range(B) if image_keys[i] not in cache]
+            if miss:
+                miss_imgs = torch.stack([
+                    self._process_image_cached(images[i], image_keys[i]) for i in miss
+                ]).to(device=device, dtype=torch.bfloat16)
+                prefix_ids = template_ids[:suffix_start].unsqueeze(0).repeat(
+                    len(miss), 1).to(device)
+                prefix_mask = torch.ones_like(prefix_ids)
+                # -> (input_ids, attention_mask, past, inputs_embeds, labels)
+                prep = llava.prepare_inputs_labels_for_multimodal(
+                    prefix_ids, prefix_mask, None, None, miss_imgs)
+                prefix_embeds = prep[3]
+                prefix_attn = prep[1]
+                dec_out = decoder(
+                    inputs_embeds=prefix_embeds,
+                    attention_mask=prefix_attn,
+                    use_cache=True,
+                    return_dict=True,
+                )
+                past = dec_out.past_key_values
+                self._kv_proto = past
+                for j, i in enumerate(miss):
+                    cache[image_keys[i]] = self._slice_kv(past, j)
+
+            # 2) Stack the B images' cached prefixes and forward only the suffix.
+            input_ids = self._build_input_ids(instruction, actions).to(device)
+            attn = input_ids.ne(self.tokenizer.pad_token_id).long()
+            suffix_ids = input_ids[:, suffix_start:]
+            suffix_mask = attn[:, suffix_start:]
+            stacked = self._stack_kv([cache[k] for k in image_keys])
+            kv_len = (stacked.key_cache[0].shape[-2] if hasattr(stacked, "key_cache")
+                      else stacked[0][0].shape[-2])
+            full_mask = torch.cat(
+                [torch.ones((B, kv_len), dtype=attn.dtype, device=device), suffix_mask],
+                dim=1,
+            )
+            suffix_embeds = embed_tokens(suffix_ids)
+            dec_suffix = decoder(
+                inputs_embeds=suffix_embeds,
+                attention_mask=full_mask,
+                past_key_values=stacked,
+                use_cache=False,
+                return_dict=True,
+            )
+            last_hidden = dec_suffix.last_hidden_state[:, -1, :]
+            last_hidden = last_hidden.type_as(self.model.reward_head.weight)
+            rewards = self.model.reward_head(last_hidden).squeeze(-1)
+        return rewards.detach().float().cpu().tolist()
 
 
 # FastAPI application

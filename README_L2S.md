@@ -456,3 +456,99 @@ python scriptsv2/eval_diffusion/eval_summary.py data/eval/<run_name>/eval_log.js
 | SIMPLER eval logs | [data/eval/&lt;run_name&gt;/](data/eval/) | `scriptsv2/eval_diffusion/eval_diffusion.sh` |
 | BON sweep logs | [data/eval/bon/](data/eval/bon/) | `scriptsv2/bon_eval/bon_eval.sh` |
 | Action-variance logs | [data/eval/variance_eggplant_*/](data/eval/) | `scriptsv2/action_variance/analyze_variance.sh` |
+
+---
+
+## Verifier performance: image + KV-prefix caching (in-process L2S training)
+
+Search-policy training (`SearchPolicyRoboMonkey*` in
+`diffusion_policy/policy/search_policy_robomonkey.py`) is **verifier-bound**.
+Each gradient step runs the policy's autoregressive search loop `max_actions-1`
+(=15) times, and every round scores the **same** batch of `B` images against a
+new candidate action with the in-process LLaVA-7B reward model. Measured on an
+a40 at `B=256`: the verifier loop is **~25 s** out of a **~25 s** step (GPU
+util is bursty/low because the cost is the LLM forward over the **576 image
+tokens**, recomputed every round). So 7000 steps ≈ **~49 h** per run.
+
+Two optimizations live in `monkey-verifier/src/infer_server.py` +
+`verifier_client.py` and `diffusion_policy/policy/verifiers.py` +
+`search_policy_robomonkey.py`:
+
+### 1. Per-image preprocessing/feature cache — ENABLED, exact
+`_process_image` (PIL resize → JPEG roundtrip → CLIP preprocess) ran once per
+`(image, action)` pair (~3,840×/step). It is now cached by raw-image hash
+(`_process_image_cached` + `_proc_image_cache`), so each unique image is
+preprocessed once per step. Bit-identical rewards (verified by
+`scriptsv2/bon/test_verifier_image_cache.py`). Small win (~1.06×) because
+preprocessing was **not** the bottleneck — the LLM forward is.
+Knobs: `ROBOMONKEY_PROC_IMAGE_CACHE_SIZE`, `ROBOMONKEY_IMAGE_FEAT_CACHE_SIZE`
+(default 512), `ROBOMONKEY_PAIRED_CHUNK_SIZE` (default 4).
+
+### 2. Per-image prefix-KV reuse — BUILT but DISABLED (blocked)
+Idea: encode each image's `image + instruction` prefix **once**, cache its KV,
+and on rounds 2–15 forward only the ~10-token action suffix → skip re-encoding
+the 576 image tokens. ~5× fewer verifier FLOPs; also fixes the eval/BoN
+`use_kv_cache_prefix` path. Wired end-to-end and **gated off by default**:
+
+- `infer_server.py`: `get_rewards_paired_kvprefix`, `_slice_kv`, `_stack_kv`,
+  `clear_prefix_cache`.
+- `verifier_client.py`: `score_paired_kvprefix`, `clear_prefix_cache`.
+- `verifiers.py`: `get_value` kvprefix branch, `set_kv_prefix`,
+  `clear_prefix_cache`, `supports_kv_prefix`.
+- `search_policy_robomonkey.py`: `_run_search` chunks the batch by image
+  (`ROBOMONKEY_KV_CHUNK`, default 16) and runs all rounds per chunk so only the
+  chunk's prefixes are resident (≈chunk×300 MB on a 48 GB a40).
+
+**Why it's disabled — the blocker.** The verifier loads with a *custom
+flash-attention* `LlamaAttention`
+(`llava_setup/LLaVA/.../llama_with_flash_attention.py`, transformers 4.31). Its
+`forward` returns `None` for `past_key_value`, and `orig_forward` only builds a
+cache from a **pre-allocated buffer (`cache_shape`)** or an **existing past** —
+a fresh prefill returns `None`. It also uses a non-standard **3-tuple cache**
+`(key, value, num_tokens)` and requires a **4D attention mask** the flash
+`_prepare_decoder_attention_mask` doesn't produce. So `past_key_values` comes
+back as a tuple-of-None (the same reason the eval KV path silently falls back).
+
+**To finish it (TODO):**
+1. Edit `orig_forward` so the `cache_shape=None` + fresh-prefill case populates
+   the 3-tuple cache from the current (post-rotary, pre-`repeat_kv`) K/V.
+2. Build correct 4D causal masks + `position_ids` for the prefix and the
+   suffix-with-past forwards (prefix all-attend, suffix causal at positions
+   `kv_len..`). Use stock `LlamaModel._prepare_decoder_attention_mask` or
+   construct masks directly in `get_rewards_paired_kvprefix`.
+3. Adapt `_slice_kv` / `_stack_kv` to the 3-tuple cache format.
+4. Validate exactness vs the flash baseline (expect ~1e-3 from bf16) and
+   measure speedup with `scriptsv2/bon/test_verifier_kvprefix.py`; profile with
+   `bench_verifier_chunk.py` / `bench_verifier_image_cache.py`.
+
+**To enable once fixed:** `export ROBOMONKEY_KV_PREFIX=1` (and tune
+`ROBOMONKEY_KV_CHUNK`) in the training env. Default off = unchanged behavior.
+
+### Launching the noise sweep
+`scriptsv2/train_search/train_noise_sweep.sbatch` runs the 2-GPU parallel sweep;
+`train_one_1gpu.sbatch` runs a single config on one GPU, e.g.:
+```bash
+# tmrl / noise_conditioned
+sbatch --account=weirdlab --partition=gpu-a40 --export=ALL,RUN_COND=1,LEVELS= \
+    scriptsv2/train_search/train_one_1gpu.sbatch
+# tunable_corruption @ 0.4 (or 0.8)
+sbatch --account=weirdlab --partition=gpu-a40 --export=ALL,RUN_COND=0,LEVELS=0.4 \
+    scriptsv2/train_search/train_one_1gpu.sbatch
+```
+Outputs go to `/gscratch/robotics/harine/robomonkey_outputs/` (home is
+quota-limited; `diffusion_policy/data/outputs` is symlinked there). Dataset:
+`/gscratch/robotics/harine/data/eggplant_in_basket_complete` (curated symlinks
+to the complete, image-bearing shards — excludes the partial `state2.zarr`).
+
+### Watching all runs
+`scriptsv2/train_search/watch_runs.sh` auto-discovers your running runs (by
+job-id → log) and prints state / elapsed / account / latest epoch+loss:
+```bash
+bash scriptsv2/train_search/watch_runs.sh            # one snapshot
+bash scriptsv2/train_search/watch_runs.sh --loop     # auto-refresh in-terminal (30s)
+bash scriptsv2/train_search/watch_runs.sh --loop 10  # auto-refresh every 10s
+# tail one run live:
+tail -f data/train/noise_sweep/tmrl-*.log | tr '\r' '\n'
+```
+At `B=256` steady-state is ~25 s/it, so 7000 steps ≈ ~49 h per run (resumes from
+the last `checkpoint_every=1000` checkpoint if a job restarts).

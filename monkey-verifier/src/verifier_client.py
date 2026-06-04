@@ -285,6 +285,30 @@ class VerifierClient:
         return [float(r) for r in rewards]
 
     # ------------------------------------------------------------------
+    # Prefix-KV reuse (in-process only): same images scored across rounds
+    # ------------------------------------------------------------------
+
+    def score_paired_kvprefix(
+        self,
+        instruction: str,
+        images: Sequence[ImageLike],
+        actions: np.ndarray,
+        image_keys: Sequence[bytes],
+    ) -> List[float]:
+        """B (image, action) pairs, reusing cached image+instruction prefix KV
+        keyed by `image_keys`. In-process only; caller chunks + clears the cache."""
+        if not self.in_process:
+            raise NotImplementedError("score_paired_kvprefix requires in_process mode")
+        model = self._ensure_loaded()
+        return model.get_rewards_paired_kvprefix(
+            instruction, list(images), np.asarray(actions), list(image_keys)
+        )
+
+    def clear_prefix_cache(self) -> None:
+        if self.in_process and self._IN_PROCESS_MODEL is not None:
+            self._IN_PROCESS_MODEL.clear_prefix_cache()
+
+    # ------------------------------------------------------------------
     # HTTP helpers
     # ------------------------------------------------------------------
 

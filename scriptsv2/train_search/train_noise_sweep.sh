@@ -40,7 +40,9 @@
 
 set -euo pipefail
 
-LEVELS="${LEVELS:-0.1,0.5,1.0}"
+# NOTE: `-` (not `:-`) so an explicitly-empty `LEVELS=` skips the sweep, as the
+# docstring promises; only an *unset* LEVELS falls back to the default.
+LEVELS="${LEVELS-0.1,0.5,1.0}"
 RUN_COND="${RUN_COND:-1}"
 DEVICE="${DEVICE:-cuda:0}"
 CONDA_ENV="${CONDA_ENV:-robodiff}"
