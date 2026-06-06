@@ -68,8 +68,26 @@ TASK="${TASK:-widowx_put_eggplant_in_basket}"
 MODE="${MODE:-argmax}"
 SOFTMAX_TEMP="${SOFTMAX_TEMP:-1.0}"  # used when MODE=softmax
 VIZ_Q="${VIZ_Q:-0}"               # 1 = dump sampled actions + values to search_q/
+VIZ_Q_EPISODES="${VIZ_Q_EPISODES:-0}"  # when VIZ_Q=1, only save render npz for
+                                  # the first K episodes (0 = all). The first K
+                                  # episodes use the same seeds across every N.
 N_SAMPLES="${N_SAMPLES:-}"        # empty = use policy.max_actions
 REPEAT_SEED="${REPEAT_SEED:-0}"   # 1 = every episode uses START_SEED
+TCONT="${TCONT:-}"                # noise level [0,1] for the noise-conditioned
+                                  # (tmrl) policy; empty = policy eval default
+STOCHASTIC_SAMPLING="${STOCHASTIC_SAMPLING:-0}"  # 1 = legacy un-seeded diffusion
+                                  # candidate sampling (varies run-to-run).
+                                  # Default 0 = candidate sampling seeded
+                                  # per-replan from f(episode_seed, t) for
+                                  # reproducible candidates. (Softmax selection
+                                  # stays stochastic regardless.)
+SAMPLE_SEED_BASE="${SAMPLE_SEED_BASE:-0}"  # offset into the per-replan seed
+SCORE_WINDOW="${SCORE_WINDOW:-executed}"  # 'executed' = verifier scores each
+                                  # executed action step (steps start..start+
+                                  # n_action_steps) and aggregates (RoboMonkey-
+                                  # faithful: rate the actions that run). 'last'
+                                  # = single action_chunk_index (legacy).
+SCORE_AGG="${SCORE_AGG:-mean}"    # mean|sum|min over the executed-window scores
 
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate "$CONDA_ENV"
@@ -106,6 +124,9 @@ if [[ "$MODE" == "softmax" ]]; then
 fi
 if [[ "$VIZ_Q" == "1" ]]; then
     EXTRA_FLAGS+=(--viz-q)
+    if [[ -n "$VIZ_Q_EPISODES" && "$VIZ_Q_EPISODES" != "0" ]]; then
+        EXTRA_FLAGS+=(--viz-q-episodes "$VIZ_Q_EPISODES")
+    fi
 fi
 if [[ "$REPEAT_SEED" == "1" ]]; then
     EXTRA_FLAGS+=(--repeat-seed)
@@ -116,6 +137,17 @@ fi
 if [[ -n "$N_SAMPLES" ]]; then
     EXTRA_FLAGS+=(--n-samples "$N_SAMPLES")
 fi
+if [[ -n "$TCONT" ]]; then
+    EXTRA_FLAGS+=(--tcont "$TCONT")
+fi
+if [[ "$STOCHASTIC_SAMPLING" == "1" ]]; then
+    EXTRA_FLAGS+=(--stochastic-sampling)
+fi
+if [[ -n "$SAMPLE_SEED_BASE" && "$SAMPLE_SEED_BASE" != "0" ]]; then
+    EXTRA_FLAGS+=(--sample-seed-base "$SAMPLE_SEED_BASE")
+fi
+EXTRA_FLAGS+=(--score-window "$SCORE_WINDOW")
+EXTRA_FLAGS+=(--score-agg "$SCORE_AGG")
 
 echo "============================================================"
 echo "  search-policy SimplerEnv eval"
@@ -137,11 +169,23 @@ if [[ "$MODE" == "softmax" ]]; then
     echo "  softmax_temp : $SOFTMAX_TEMP"
 fi
 echo "  n_samples    : ${N_SAMPLES:-<policy.max_actions>}"
+if [[ "$STOCHASTIC_SAMPLING" == "1" ]]; then
+    echo "  sampling     : stochastic (legacy, un-seeded candidates)"
+else
+    echo "  sampling     : deterministic candidates (seed base=$SAMPLE_SEED_BASE)"
+fi
+echo "  score_window : $SCORE_WINDOW (agg=$SCORE_AGG)"
 echo "  viz_q        : $VIZ_Q"
 echo "============================================================"
 
-xvfb-run --auto-servernum -s "-screen 0 640x480x24" \
-    python "$dir_path/eval_search.py" \
+# OSMesa renders headless (no X server), so xvfb is optional. Use it when
+# available, otherwise run python directly (mirrors eval_diffusion.sh).
+if command -v xvfb-run >/dev/null 2>&1; then
+    XVFB=(xvfb-run --auto-servernum -s "-screen 0 640x480x24")
+else
+    XVFB=()
+fi
+"${XVFB[@]}" python "$dir_path/eval_search.py" \
         --checkpoint "$CKPT" \
         --num-episodes "$NUM_EPISODES" \
         --start-seed "$START_SEED" \

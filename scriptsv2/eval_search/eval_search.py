@@ -53,6 +53,8 @@ def _search_policy_predict(
     viz_q: bool = False,
     n_samples: Optional[int] = None,
     softmax_temp: float = 1.0,
+    tcont: Optional[float] = None,
+    replan_seed: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run the search policy.
 
@@ -96,12 +98,81 @@ def _search_policy_predict(
     # (max_actions - 1) window of context over the autoregressive loop,
     # which matches training-time context length while still returning all
     # n_samples candidates for argmax selection.
-    actions, values = policy.predict_n_actions(
-        obs_dict, policy.verifier, n_samples
-    )  # (B, K, horizon, action_dim) ; (B, K)
+    #
+    # Verifier speedup (same as training's _run_search): when ROBOMONKEY_KV_PREFIX=1
+    # and the in-process verifier supports it, route all of this replan's N
+    # candidate scorings through the cached image-prefix KV. Every get_value
+    # here scores the SAME single frame (B=1), so the image+instruction prefix
+    # KV is computed once and reused across the N rounds. Clear before (fresh
+    # frame) and after (bound GPU memory). Bit-equivalent to the plain path.
+    import os as _os
+    _verifier = policy.verifier
+    _kv = (_os.environ.get("ROBOMONKEY_KV_PREFIX", "0") == "1"
+           and getattr(_verifier, "supports_kv_prefix", False))
+    if _kv:
+        _verifier.set_kv_prefix(True)
+        _verifier.clear_prefix_cache()
+    # tcont (noise level in [0,1]) only applies to the noise-conditioned (tmrl)
+    # policy, whose predict_n_actions takes a tcont_context kwarg. The
+    # tunable_corruption policies don't accept it, so pass only when supported.
+    import inspect as _inspect
+    _pred_kw: Dict[str, Any] = {}
+    if tcont is not None and "tcont_context" in _inspect.signature(
+        policy.predict_n_actions
+    ).parameters:
+        _pred_kw["tcont_context"] = float(tcont)
+    # Deterministic candidate sampling: seed the global RNG from a per-replan
+    # seed so the N diffusion candidate draws are reproducible run-to-run.
+    # Applied here, at the harness level, it governs every policy variant
+    # (tunable_corruption / noise-conditioned / BC) since they all draw their
+    # init noise from the default generator. The candidates stay diverse (N
+    # sequential draws from the seeded stream) and nested across N. The softmax
+    # selection below is intentionally left stochastic — see the restore call.
+    if replan_seed is not None:
+        torch.manual_seed(int(replan_seed))
+    try:
+        actions, values = policy.predict_n_actions(
+            obs_dict, _verifier, n_samples, **_pred_kw
+        )  # (B, K, horizon, action_dim) ; (B, K)
+    finally:
+        if _kv:
+            _verifier.set_kv_prefix(False)
+            _verifier.clear_prefix_cache()
     B = actions.shape[0]
     start = To - 1
     end = start + n_action_steps
+
+    # Chunk-scoring selection (parity with the BC BoN fix): re-score every
+    # candidate by the verifier over ALL executed actions (steps [start:end])
+    # and aggregate, then select on that. The autoregressive search policy
+    # already generated its candidates using its own per-candidate values; this
+    # only changes the SELECTION criterion so it matches the BC chunk scoring
+    # (where the verifier collapses on a single far-horizon step). Enabled with
+    # EVAL_CHUNK_SELECT=1. BC (BCSearchWrapper) already returns chunk values, so
+    # it leaves this off. Rollout is B=1.
+    if _os.environ.get("EVAL_CHUNK_SELECT", "0") == "1":
+        _agg = _os.environ.get("BC_VERIFIER_AGG", "mean").lower()
+        _imgk = getattr(_verifier, "image_obs_key", None)
+        _img = obs_dict[_imgk]                       # (1, To, ...)
+        _execs = actions[:, :, start:end, :]         # (B, N, S, 7)
+        _N, _S = _execs.shape[1], _execs.shape[2]
+        assert B == 1, "EVAL_CHUNK_SELECT assumes rollout batch B=1"
+        _M = _N * _S
+        _flat = _execs.reshape(_M, 1, 7)             # get_value reads [:, -1]
+        _bimg = _img.expand(_M, *_img.shape[1:])
+        _fv = _verifier.get_value({_imgk: _bimg}, _flat)  # (M,)
+        _ps = _fv.reshape(_N, _S)
+        if _agg == "sum":
+            _cv = _ps.sum(dim=1)
+        elif _agg == "min":
+            _cv = _ps.min(dim=1).values
+        elif _agg == "last":
+            _cv = _ps[:, -1]
+        elif _agg == "first":
+            _cv = _ps[:, 0]
+        else:
+            _cv = _ps.mean(dim=1)
+        values = _cv.unsqueeze(0)                    # (1, N) chunk values
 
     out: Dict[str, Any] = {"values": values[0].detach().cpu().tolist()}
 
@@ -121,6 +192,12 @@ def _search_policy_predict(
         return out
 
     if mode == "softmax":
+        # Restore entropy-seeded RNG so the multinomial selection below stays
+        # stochastic even though candidate sampling above was seeded. (Only the
+        # candidate sampling is made deterministic — selection is part of the
+        # method and intentionally keeps its run-to-run randomness.)
+        if replan_seed is not None:
+            torch.seed()
         # Sample a candidate index from softmax(values / temp). temp -> 0 is
         # argmax, temp -> inf is uniform. Default temp=1.0.
         T = max(float(softmax_temp), 1e-6)
@@ -166,14 +243,20 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
                     mode: str = "argmax",
                     viz_q: bool = False,
                     n_samples: Optional[int] = None,
-                    softmax_temp: float = 1.0) -> Dict[str, Any]:
+                    softmax_temp: float = 1.0,
+                    tcont: Optional[float] = None,
+                    deterministic_sampling: bool = True,
+                    sample_seed_base: int = 0) -> Dict[str, Any]:
     n_obs_steps = int(cfg.n_obs_steps)
     n_action_steps = int(cfg.n_action_steps)
 
     obs, _ = env.reset(seed=int(seed))
-    source_obj = getattr(env, "episode_source_obj", None)
-    target_obj = getattr(env, "episode_target_obj", None)
-    tcp_link = getattr(env, "tcp", None)
+    # Step/reset go through the wrapper, but the SimplerEnv-specific attributes
+    # live on the unwrapped base env (mirrors eval_diffusion.py).
+    env_base = getattr(env, "unwrapped", env)
+    source_obj = getattr(env_base, "episode_source_obj", None)
+    target_obj = getattr(env_base, "episode_target_obj", None)
+    tcp_link = getattr(env_base, "tcp", None)
     if source_obj is None or target_obj is None or tcp_link is None:
         raise RuntimeError(
             "env is missing episode_source_obj / episode_target_obj / tcp; "
@@ -227,7 +310,7 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
 
     while t < max_steps:
         step_obs = build_obs_step(
-            env=env, obs=obs,
+            env=env_base, obs=obs,
             prev_arm_action=prev_arm_action,
             prev_gripper_action=prev_gripper_action,
             source_obj=source_obj, target_obj=target_obj, tcp_link=tcp_link,
@@ -236,7 +319,7 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
 
         current_frame: Optional[np.ndarray] = None
         try:
-            img = get_image_from_maniskill2_obs_dict(env, obs)
+            img = get_image_from_maniskill2_obs_dict(env_base, obs)
             arr = np.asarray(img, dtype=np.uint8)
             if arr.ndim == 3 and arr.shape[-1] == 3:
                 current_frame = arr
@@ -255,9 +338,18 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
             obs_dict["agentview_image"] = img_t.unsqueeze(0).unsqueeze(0).expand(
                 1, n_obs_steps, *current_frame.shape
             )
+            # Per-replan deterministic seed = f(episode seed, t). Unique per
+            # (episode, replan step) and stable across runs, so the candidate
+            # set at each replan is reproducible. None -> stochastic (legacy).
+            replan_seed = (
+                (int(seed) * 1_000_003 + int(t) + int(sample_seed_base))
+                % (2 ** 31 - 1)
+                if deterministic_sampling else None
+            )
             pred = _search_policy_predict(
                 policy, obs_dict, mode=mode, viz_q=viz_q,
                 n_samples=n_samples, softmax_temp=softmax_temp,
+                tcont=tcont, replan_seed=replan_seed,
             )
             chunk = pred["chunk"][0].detach().cpu().numpy()
             if branches is not None and current_frame is not None:
@@ -358,12 +450,53 @@ def main() -> None:
                              "verifier values + frame to "
                              "<output_dir>/search_q/ep<idx>_seed<seed>.npz "
                              "for later visualization (mirrors BoN viz_q).")
+    parser.add_argument("--viz-q-episodes", type=int, default=0,
+                        help="When --viz-q is set, only collect/save the "
+                             "render npz for the first K episodes (the same "
+                             "seeds across every N cell, since episode i uses "
+                             "start_seed+i). 0 = all episodes (legacy). Set to "
+                             "e.g. 10 to keep full success-rate stats over all "
+                             "--num-episodes while saving render data for just "
+                             "the first 10 fixed-seed episodes.")
+    parser.add_argument("--tcont", type=float, default=None,
+                        help="Noise level in [0,1] for the noise-conditioned "
+                             "(tmrl) policy. Maps to DDPM timestep "
+                             "round(tcont*(T-1)). 0.0 = clean obs. Ignored by "
+                             "the tunable_corruption policies, which don't take "
+                             "a tcont input. Default: policy's eval default "
+                             "(0.0 / clean for the noise-conditioned policy).")
     parser.add_argument("--n-samples", type=int, default=None,
                         help="Override the number of search samples per "
                              "replan. Default: policy.max_actions (argmax) "
                              "or policy.max_actions-1 (refine). For values "
                              "> max_actions, predict_n_actions slides a "
                              "fixed (max_actions-1) context window.")
+    parser.add_argument("--stochastic-sampling", action="store_true",
+                        help="Legacy behavior: do NOT seed the diffusion "
+                             "candidate sampling, so the N candidates vary "
+                             "run-to-run. Default (off): candidate sampling "
+                             "is seeded per-replan from f(episode_seed, t) for "
+                             "reproducible candidates. (Softmax selection stays "
+                             "stochastic in either case.)")
+    parser.add_argument("--sample-seed-base", type=int, default=0,
+                        help="Offset added into the per-replan candidate-"
+                             "sampling seed. Change to draw a different "
+                             "deterministic realization of the candidate sets. "
+                             "Ignored under --stochastic-sampling.")
+    parser.add_argument("--score-window", choices=["last", "executed"],
+                        default="last",
+                        help="Which action(s) the verifier scores per "
+                             "candidate. 'last': the single configured "
+                             "action_chunk_index (default, =-1, last horizon "
+                             "step). 'executed': score EACH executed step "
+                             "(start..start+n_action_steps) against the current "
+                             "frame and aggregate via --score-agg, so the value "
+                             "reflects the whole executed chunk. NOTE: scores "
+                             "n_action_steps x more verifier forwards.")
+    parser.add_argument("--score-agg", choices=["mean", "sum", "min"],
+                        default="mean",
+                        help="Aggregation over the executed-window step scores "
+                             "when --score-window executed. Default mean.")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -374,13 +507,93 @@ def main() -> None:
     policy, cfg = load_policy(
         checkpoint=args.checkpoint, device=device, use_ema=not args.no_ema,
     )
+    # BC checkpoint (e.g. DiffusionUnetImagePolicy) has no predict_n_actions or
+    # verifier. Wrap it with BCSearchWrapper so the rest of the eval harness works
+    # unchanged: N independent BC samples are scored by the in-process verifier.
+    if not hasattr(policy, "predict_n_actions"):
+        import os as _os
+        from diffusion_policy.policy.verifiers import RoboMonkeyVerifier
+        from diffusion_policy.policy.search_policy_robomonkey import BCSearchWrapper
+        # BC sample diversity: the trained DDIM-8 sampler is near-deterministic,
+        # so the N candidates collapse and the verifier can't rank them (BoN
+        # degenerates). BC_SAMPLER=ddpm swaps in full ancestral DDPM sampling at
+        # inference (same epsilon model + betas), which injects per-step noise
+        # and yields genuinely diverse candidates. BC_SAMPLER=ddim (default)
+        # keeps the trained deterministic sampler (the control run).
+        _sampler = _os.environ.get("BC_SAMPLER", "ddim").lower()
+        if _sampler == "ddpm":
+            from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+            _old = policy.noise_scheduler
+            policy.noise_scheduler = DDPMScheduler(
+                num_train_timesteps=_old.config.num_train_timesteps,
+                beta_start=_old.config.beta_start,
+                beta_end=_old.config.beta_end,
+                beta_schedule=_old.config.beta_schedule,
+                variance_type="fixed_small",
+                clip_sample=_old.config.clip_sample,
+                prediction_type=_old.config.prediction_type,
+            )
+            policy.num_inference_steps = int(
+                _os.environ.get("BC_SAMPLER_STEPS",
+                                str(_old.config.num_train_timesteps)))
+            print(f"[eval] BC_SAMPLER=ddpm -> ancestral DDPM sampling "
+                  f"(num_inference_steps={policy.num_inference_steps}, "
+                  f"stochastic candidates)")
+        else:
+            print(f"[eval] BC_SAMPLER=ddim -> trained deterministic sampler "
+                  f"(num_inference_steps={policy.num_inference_steps})")
+        _instr = _os.environ.get("VERIFIER_INSTRUCTION", "put the eggplant in the basket")
+        _img_key = _os.environ.get("VERIFIER_IMAGE_KEY", "agentview_image")
+        _verifier = RoboMonkeyVerifier(
+            server_url="in_process",
+            instruction=_instr,
+            image_obs_key=_img_key,
+            image_save_dir="/tmp/robomonkey_bc_obs",
+            action_chunk_index=-1,
+            request_timeout=300,
+            max_workers=8,
+            keep_jpegs=False,
+            health_check=True,
+        )
+        _max_actions = max(128, int(_os.environ.get("N_SAMPLES", "128")))
+        policy = BCSearchWrapper(policy, _verifier, max_actions=_max_actions)
+        print(f"[eval] BC mode: wrapped with in-process verifier "
+              f"(instruction={_instr!r}, max_actions={_max_actions})")
     print(f"[eval] max_actions={int(policy.max_actions)}  (in-process verifier)")
+
+    # Configure what the verifier scores. 'executed': score each of the
+    # n_action_steps actions that actually get executed (the chunk window
+    # start..start+n_action_steps) against the current frame, aggregated via
+    # --score-agg, so the candidate value = quality of the whole executed
+    # chunk. 'last': leave the verifier's single action_chunk_index (default).
+    _score_indices = None
+    if args.score_window == "executed":
+        _To = int(policy.n_obs_steps)
+        _nas = int(policy.n_action_steps)
+        _start = _To - 1
+        _score_indices = list(range(_start, _start + _nas))
+        policy.verifier.score_indices = _score_indices
+        policy.verifier.score_agg = str(args.score_agg)
+        print(f"[eval] verifier scoring = EXECUTED window steps "
+              f"{_score_indices[0]}..{_score_indices[-1]} "
+              f"(agg={args.score_agg}, {_nas}x verifier forwards/candidate)")
+    else:
+        # Explicitly clear so a stale attr can't leak windowed scoring.
+        policy.verifier.score_indices = None
+        print(f"[eval] verifier scoring = single step "
+              f"action_chunk_index={getattr(policy.verifier, 'action_chunk_index', -1)}")
 
     import simpler_env  # noqa: F401
     from simpler_env import make as make_env
     print(f"[eval] Creating SimplerEnv task: {args.task}")
     env = make_env(args.task)
-    instr = env.get_language_instruction() or args.task
+    # make_env returns a gym TimeLimit wrapper; the SimplerEnv API lives on the
+    # unwrapped base env (mirrors eval_diffusion.py).
+    _base_env = getattr(env, "unwrapped", env)
+    instr = (
+        _base_env.get_language_instruction()
+        if hasattr(_base_env, "get_language_instruction") else None
+    ) or args.task
     print(f"[eval] instruction: {instr!r}")
 
     output_dir = Path(args.output_dir) if args.output_dir else None
@@ -430,18 +643,28 @@ def main() -> None:
         else:
             ep_seed = int(args.start_seed) + i
         capture = (i < save_videos_n)
+        # Cap render-data collection to the first K episodes (same fixed seeds
+        # across every N cell). Keeps SR over all episodes but avoids dumping
+        # frames/candidate actions for all of them. 0 = all (legacy).
+        viz_q_lim = int(args.viz_q_episodes)
+        ep_viz_q = viz_q and (viz_q_lim <= 0 or i < viz_q_lim)
         ep_t0 = time.time()
         try:
             ep = rollout_episode(
                 env=env, policy=policy, cfg=cfg, device=device,
                 seed=ep_seed, max_steps=int(args.max_steps),
                 instruction=str(instr), capture_frames=capture,
-                mode=str(args.mode), viz_q=viz_q,
+                mode=str(args.mode), viz_q=ep_viz_q,
                 n_samples=args.n_samples,
                 softmax_temp=float(args.softmax_temp),
+                tcont=args.tcont,
+                deterministic_sampling=(not args.stochastic_sampling),
+                sample_seed_base=int(args.sample_seed_base),
             )
         except Exception as e:
             print(f"[eval] episode {i} (seed={ep_seed}) raised: {e!r}")
+            import traceback as _tb
+            _tb.print_exc()
             ep = {"success": False, "truncated": False, "num_steps": 0,
                   "error": repr(e), "steps": [], "frames": [], "branches": None,
                   "cam_K": None, "cam_T_wc": None, "base_pose_world": None}
@@ -554,6 +777,12 @@ def main() -> None:
         "max_steps": int(args.max_steps),
         "use_ema": (not args.no_ema),
         "mode": str(args.mode),
+        "tcont": (float(args.tcont) if args.tcont is not None else None),
+        "deterministic_sampling": (not args.stochastic_sampling),
+        "sample_seed_base": int(args.sample_seed_base),
+        "score_window": str(args.score_window),
+        "score_indices": _score_indices,
+        "score_agg": str(args.score_agg),
         "max_actions": int(policy.max_actions),
         "num_successes": int(successes),
         "num_truncated": int(truncations),
