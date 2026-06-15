@@ -1,6 +1,7 @@
 [submodule "SimplerEnv"]
 	path = SimplerEnv
-	url = https://github.com/simpler-env/SimplerEnv
+	url = https://github.com/harine/SimplerEnv.git
+	branch = main-harine
 [submodule "sglang-vla"]
 	path = sglang-vla
 	url = https://github.com/harine/sglang-vla.git
