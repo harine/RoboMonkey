@@ -82,7 +82,16 @@ run_one() {
     echo "  $label"
     echo "  overrides: $*"
     echo "============================================================"
-    python diffusion_policy/workspace/train_mlp_image_workspace.py "$@"
+    if [[ "${NUM_GPUS:-1}" -gt 1 ]]; then
+        # data-parallel (DDP) via accelerate: splits the batch across NUM_GPUS.
+        # Each rank loads its own in-process verifier. Set BATCH_SIZE = per-GPU
+        # batch so effective batch = BATCH_SIZE * NUM_GPUS.
+        accelerate launch --num_processes="${NUM_GPUS}" --num_machines=1 \
+            --mixed_precision=no --dynamo_backend=no \
+            diffusion_policy/workspace/train_mlp_image_workspace.py "$@"
+    else
+        python diffusion_policy/workspace/train_mlp_image_workspace.py "$@"
+    fi
 }
 
 # --- Unconditioned tunable-corruption sweep -------------------------------

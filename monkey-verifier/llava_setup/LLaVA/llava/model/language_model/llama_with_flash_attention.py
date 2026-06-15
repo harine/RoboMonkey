@@ -300,47 +300,40 @@ class LlamaAttention(nn.Module):
 
         assert query_states.dtype == hidden_states.dtype
 
-        if use_cache:
-            if cache_shape is None:
-                if past_key_value is not None:
-                    key_states = torch.cat([past_key_value[0], key_states], dim=2)
-                    value_states = torch.cat([past_key_value[1], value_states], dim=2)
-            else:
-                if past_key_value is None:
-                    past_key_value = (
-                        torch.zeros(
-                            bsz,
-                            self.num_key_value_heads,
-                            cache_shape[0],
-                            self.head_dim,
-                            device=hidden_states.device,
-                            dtype=key_states.dtype,
-                        ),
-                        torch.zeros(
-                            bsz,
-                            self.num_key_value_heads,
-                            cache_shape[0],
-                            self.head_dim,
-                            device=hidden_states.device,
-                            dtype=value_states.dtype,
-                        ),
-                        0,
-                    )
-                past_key = past_key_value[0]
-                past_value = past_key_value[1]
-                num_past_tokens = past_key_value[2]
-
-                past_key[:, :, num_past_tokens:kv_seq_len] = key_states
-                past_value[:, :, num_past_tokens:kv_seq_len] = value_states
-
-                key_states = past_key[:, :, :kv_seq_len]
-                value_states = past_value[:, :, :kv_seq_len]
-
+        # Reuse a supplied prefix KV regardless of use_cache so the prefix-KV
+        # suffix forward can run with use_cache=False -> the decoder then does
+        # NOT accumulate a full-length output cache across all layers (that is
+        # O(batch * total_len) and OOMs for large batches; we discard it anyway).
+        # For cache_shape is None the concatenated K/V drive the attention below;
+        # we only emit a 3-tuple cache (post-rotary, pre-repeat_kv K/V + token
+        # count) when use_cache is set, which is what makes a fresh prefill
+        # cacheable for prefix-KV reuse.
+        if cache_shape is None:
+            if past_key_value is not None:
+                key_states = torch.cat([past_key_value[0], key_states], dim=2)
+                value_states = torch.cat([past_key_value[1], value_states], dim=2)
+            past_key_value = (key_states, value_states, kv_seq_len) if use_cache else None
+        elif use_cache:
+            # Pre-allocated-buffer path (cache_shape set). Unused by this repo
+            # (config.cache_shape defaults to None); kept for completeness.
+            if past_key_value is None:
                 past_key_value = (
-                    past_key,
-                    past_value,
-                    kv_seq_len,
+                    torch.zeros(bsz, self.num_key_value_heads, cache_shape[0],
+                                self.head_dim, device=hidden_states.device,
+                                dtype=key_states.dtype),
+                    torch.zeros(bsz, self.num_key_value_heads, cache_shape[0],
+                                self.head_dim, device=hidden_states.device,
+                                dtype=value_states.dtype),
+                    0,
                 )
+            past_key = past_key_value[0]
+            past_value = past_key_value[1]
+            num_past_tokens = past_key_value[2]
+            past_key[:, :, num_past_tokens:kv_seq_len] = key_states
+            past_value[:, :, num_past_tokens:kv_seq_len] = value_states
+            key_states = past_key[:, :, :kv_seq_len]
+            value_states = past_value[:, :, :kv_seq_len]
+            past_key_value = (past_key, past_value, kv_seq_len)
         else:
             past_key_value = None
 

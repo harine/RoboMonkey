@@ -47,25 +47,20 @@ MODE="${MODE:-softmax}"
 # ddim = trained deterministic sampler (control). Read by eval_search.py.
 BC_SAMPLER="${BC_SAMPLER:-ddim}"
 VIDEO_FPS="${VIDEO_FPS:-10}"
-# VIZ_Q gates the eval style:
-#   VIZ_Q=1 (default) -> "viz" run: 10 fixed seeds shared across EVERY N so the
-#     saved render data (frames + candidate actions + q-values + camera
-#     transforms cam_K/cam_T_wc/base_pose_world -> <out>/search_q/*.npz) and the
-#     per-episode MP4s are directly comparable cell-to-cell.
-#   VIZ_Q=0 -> "SR" run (e.g. Best-of-N success-rate sweep): NUM_EPISODES rollouts
-#     from START_SEED, no fixed-seed list, no per-replan dumps, no videos.
+# Every cell runs NUM_EPISODES rollouts from START_SEED (episode i -> seed
+# START_SEED+i) for the success-rate estimate. When VIZ_Q=1 we additionally save
+# render data (frames + candidate chunks + q-values + camera transforms ->
+# <out>/search_q/*.npz) and an MP4 for only the FIRST VIZ_Q_EPISODES episodes —
+# i.e. seeds START_SEED..START_SEED+VIZ_Q_EPISODES-1, the SAME fixed seeds across
+# every N cell, so the renders are directly comparable. (Mirrors the noise sweep.)
+NUM_EPISODES="${NUM_EPISODES:-50}"
+SEEDS=""   # use start-seed sweep (episode i -> START_SEED+i), not a fixed list
 VIZ_Q="${VIZ_Q:-1}"
 if [[ "$VIZ_Q" == "1" ]]; then
-    NUM_SEEDS="${NUM_SEEDS:-10}"
-    if [[ -z "${SEEDS:-}" ]]; then
-        SEEDS="$(python -c "print(','.join(str($START_SEED+i) for i in range($NUM_SEEDS)))")"
-    fi
-    # episode count = number of fixed seeds (used only for output-dir naming).
-    NUM_EPISODES="$(echo "$SEEDS" | awk -F, '{print NF}')"
-    SAVE_VIDEOS="${SAVE_VIDEOS:-$NUM_EPISODES}"
+    VIZ_Q_EPISODES="${VIZ_Q_EPISODES:-10}"
+    SAVE_VIDEOS="${SAVE_VIDEOS:-$VIZ_Q_EPISODES}"
 else
-    NUM_EPISODES="${NUM_EPISODES:-50}"
-    SEEDS=""
+    VIZ_Q_EPISODES=0
     SAVE_VIDEOS="${SAVE_VIDEOS:-0}"
 fi
 SOFTMAX_TEMP="${SOFTMAX_TEMP:-1.0}"
@@ -105,12 +100,8 @@ LOCK_FILE="$WORK_DIR/queue.lock"
         echo "mode           : softmax (temp=${SOFTMAX_TEMP})"
     fi
     echo "bc_sampler     : $BC_SAMPLER  (ddpm=stochastic ancestral, ddim=deterministic)"
-    if [[ -n "$SEEDS" ]]; then
-        echo "seeds          : $SEEDS  ($NUM_EPISODES fixed seeds, shared across all N)"
-    else
-        echo "episodes       : $NUM_EPISODES from start_seed=$START_SEED"
-    fi
-    echo "viz_q          : $VIZ_Q  (1 = save candidate actions + q-values + frames + transforms)"
+    echo "episodes       : $NUM_EPISODES from start_seed=$START_SEED (SR over all)"
+    echo "viz_q          : $VIZ_Q  (render data for first $VIZ_Q_EPISODES eps = seeds ${START_SEED}..$((START_SEED+VIZ_Q_EPISODES-1)))"
     echo "save_videos    : $SAVE_VIDEOS  (fps=$VIDEO_FPS)"
     echo "num_workers    : $NUM_WORKERS  (1 GPU per worker)"
     echo "task           : $TASK"
@@ -123,11 +114,16 @@ for n in "${N_ARR[@]}"; do
     echo "$n" >> "$QUEUE_FILE"
 done
 
+# Output subdir label. Override (e.g. BC_LABEL=bc_h8) to keep evals of
+# different policies/horizons from sharing cell dirs (which are keyed only by
+# sampler/N/seed/ep, NOT by checkpoint).
+BC_LABEL="${BC_LABEL:-bc}"
+
 cell_out_dir() {
     local n="$1"
     local tag="softmaxT${SOFTMAX_TEMP}"
     [[ "$MODE" == "argmax" ]] && tag="argmax"
-    echo "data/eval/search_bc_sweep/bc/${tag}_${BC_SAMPLER}_n${n}_seed${START_SEED}_ep${NUM_EPISODES}"
+    echo "data/eval/search_bc_sweep/${BC_LABEL}/${tag}_${BC_SAMPLER}_n${n}_seed${START_SEED}_ep${NUM_EPISODES}"
 }
 
 append_result_row() {
@@ -155,9 +151,15 @@ run_cell() {
     local log_file="$out/eval_log.json"
     local cell_log="$WORK_DIR/bc_n${n}_gpu${gpu_id}.log"
 
-    if [[ -f "$log_file" && "${FORCE:-0}" != "1" ]]; then
-        echo "[gpu=$gpu_id reuse ] bc n=$n -> $log_file" | tee -a "$RESULTS_TXT"
+    # Reuse only if the cell already has >= NUM_EPISODES episodes; otherwise
+    # (fewer episodes, e.g. a prior 10-episode run) re-run — eval_search.py
+    # resumes from episodes.jsonl and only runs the additional seeds.
+    local have=0
+    [[ -f "$log_file" ]] && have=$(python -c "import json;print(int(json.load(open('$log_file')).get('num_episodes',0)))" 2>/dev/null || echo 0)
+    if [[ -f "$log_file" && "${FORCE:-0}" != "1" && "$have" -ge "$NUM_EPISODES" ]]; then
+        echo "[gpu=$gpu_id reuse ] bc n=$n -> $log_file ($have ep)" | tee -a "$RESULTS_TXT"
     else
+        [[ "$have" -gt 0 ]] && echo "[gpu=$gpu_id resume] bc n=$n ($have -> $NUM_EPISODES ep)" | tee -a "$RESULTS_TXT"
         echo "[gpu=$gpu_id start ] bc n=$n -> $out" | tee -a "$RESULTS_TXT"
         mkdir -p "$out"
         if ! env CUDA_VISIBLE_DEVICES="$gpu_id" \
@@ -173,6 +175,7 @@ run_cell() {
                 USE_EMA=1 \
                 TASK="$TASK" \
                 VIZ_Q="$VIZ_Q" \
+                VIZ_Q_EPISODES="$VIZ_Q_EPISODES" \
                 SAVE_VIDEOS="$SAVE_VIDEOS" \
                 VIDEO_FPS="$VIDEO_FPS" \
                 VERIFIER_INSTRUCTION="$VERIFIER_INSTRUCTION" \

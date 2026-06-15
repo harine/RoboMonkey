@@ -596,33 +596,31 @@ class RobotRewardModel:
     # ------------------------------------------------------------------
     @staticmethod
     def _slice_kv(past_kv, j: int):
-        """Slice row j of a batched KV cache -> list[(k,v)] per layer, batch 1."""
-        if hasattr(past_kv, "key_cache"):
-            pairs = zip(past_kv.key_cache, past_kv.value_cache)
-        else:
-            pairs = past_kv
-        return [(k[j:j + 1].contiguous(), v[j:j + 1].contiguous()) for (k, v) in pairs]
+        """Slice row j of a batched KV cache -> list[(k,v,n)] per layer, batch 1.
+
+        The custom flash LlamaAttention uses a 3-tuple cache `(key, value,
+        num_tokens)` per layer (see `llama_with_flash_attention.orig_forward`).
+        `num_tokens` is identical across rows (same-length prefixes), so it is
+        carried through unchanged."""
+        return [(k[j:j + 1].contiguous(), v[j:j + 1].contiguous(), n)
+                for (k, v, n) in past_kv]
 
     def _stack_kv(self, per_image):
-        """Concatenate N per-image list[(k,v)] caches into one batch-N cache,
-        matching the type the backbone produced (DynamicCache or legacy tuple)."""
+        """Concatenate N per-image list[(k,v,n)] caches into one batch-N cache in
+        the 3-tuple format the backbone consumes."""
         n_layers = len(per_image[0])
-        Ks = [torch.cat([img[l][0] for img in per_image], dim=0) for l in range(n_layers)]
-        Vs = [torch.cat([img[l][1] for img in per_image], dim=0) for l in range(n_layers)]
-        proto = self._kv_proto
-        if proto is not None and hasattr(proto, "key_cache"):
-            from copy import copy as _copy
-            new = _copy(proto)
-            new.key_cache = Ks
-            new.value_cache = Vs
-            return new
-        return tuple((Ks[l], Vs[l]) for l in range(n_layers))
+        out = []
+        for l in range(n_layers):
+            Ks = torch.cat([img[l][0] for img in per_image], dim=0)
+            Vs = torch.cat([img[l][1] for img in per_image], dim=0)
+            n = per_image[0][l][2]  # same prefix length for every image
+            out.append((Ks, Vs, n))
+        return tuple(out)
 
     def clear_prefix_cache(self):
         """Drop the per-image prefix-KV cache (call between image chunks so GPU
         memory stays bounded by the chunk size, not the full batch)."""
         self._prefix_kv_cache = {}
-        self._kv_proto = None
 
     def get_rewards_paired_kvprefix(self, instruction: str, images: list,
                                     actions, image_keys: list) -> list:
@@ -632,7 +630,6 @@ class RobotRewardModel:
         call `clear_prefix_cache()` between independent image chunks."""
         if not hasattr(self, "_prefix_kv_cache"):
             self._prefix_kv_cache = {}
-            self._kv_proto = None
         actions = np.asarray(actions)
         B = actions.shape[0]
         if len(images) != B or len(image_keys) != B:
@@ -655,55 +652,84 @@ class RobotRewardModel:
         embed_tokens = decoder.embed_tokens
         cache = self._prefix_kv_cache
 
+        # Sub-batch the prefill and suffix forwards so peak GPU memory is bounded
+        # regardless of B. The stacked prefix cache is O(sub * n_layers *
+        # prefix_len) and the prefill forward is O(sub * prefix_len); without
+        # chunking, large B (e.g. chunk-sum scoring with B = images * horizon)
+        # OOMs. Note this does NOT bound the resident `_prefix_kv_cache` itself
+        # (~prefix_len * n_layers per unique image) -> the caller still bounds the
+        # number of distinct images in flight via ROBOMONKEY_KV_CHUNK.
+        fwd_chunk = max(1, int(os.environ.get("ROBOMONKEY_KV_FWD_CHUNK", 16)))
+        input_ids = self._build_input_ids(instruction, actions).to(device)
+        attn = input_ids.ne(self.tokenizer.pad_token_id).long()
+        suffix_ids_all = input_ids[:, suffix_start:]
+        suffix_mask_all = attn[:, suffix_start:]
+
         with torch.inference_mode():
-            # 1) Prefill prefix KV for any images not yet cached.
+            # 1) Prefill prefix KV for any not-yet-cached images, in sub-batches.
             miss = [i for i in range(B) if image_keys[i] not in cache]
-            if miss:
+            for s in range(0, len(miss), fwd_chunk):
+                sub = miss[s:s + fwd_chunk]
                 miss_imgs = torch.stack([
-                    self._process_image_cached(images[i], image_keys[i]) for i in miss
+                    self._process_image_cached(images[i], image_keys[i]) for i in sub
                 ]).to(device=device, dtype=torch.bfloat16)
                 prefix_ids = template_ids[:suffix_start].unsqueeze(0).repeat(
-                    len(miss), 1).to(device)
+                    len(sub), 1).to(device)
                 prefix_mask = torch.ones_like(prefix_ids)
-                # -> (input_ids, attention_mask, past, inputs_embeds, labels)
-                prep = llava.prepare_inputs_labels_for_multimodal(
-                    prefix_ids, prefix_mask, None, None, miss_imgs)
-                prefix_embeds = prep[3]
-                prefix_attn = prep[1]
+                # Each miss row is a DISTINCT image: disable the encode-once
+                # broadcast (else `encode_images` smears row 0's CLIP features
+                # across the sub-batch) and hand the per-row keys to the feature
+                # cache. Mirrors `get_rewards_paired`/`_paired_chunk_forward`.
+                prev_broadcast = self._broadcast_image
+                prev_keys = self._cur_image_keys
+                self._broadcast_image = False
+                self._cur_image_keys = [image_keys[i] for i in sub]
+                try:
+                    # -> (input_ids, attention_mask, past, inputs_embeds, labels)
+                    prep = llava.prepare_inputs_labels_for_multimodal(
+                        prefix_ids, prefix_mask, None, None, miss_imgs)
+                finally:
+                    self._broadcast_image = prev_broadcast
+                    self._cur_image_keys = prev_keys
                 dec_out = decoder(
-                    inputs_embeds=prefix_embeds,
-                    attention_mask=prefix_attn,
+                    inputs_embeds=prep[3],
+                    attention_mask=prep[1],
                     use_cache=True,
                     return_dict=True,
                 )
                 past = dec_out.past_key_values
-                self._kv_proto = past
-                for j, i in enumerate(miss):
+                for j, i in enumerate(sub):
                     cache[image_keys[i]] = self._slice_kv(past, j)
 
-            # 2) Stack the B images' cached prefixes and forward only the suffix.
-            input_ids = self._build_input_ids(instruction, actions).to(device)
-            attn = input_ids.ne(self.tokenizer.pad_token_id).long()
-            suffix_ids = input_ids[:, suffix_start:]
-            suffix_mask = attn[:, suffix_start:]
-            stacked = self._stack_kv([cache[k] for k in image_keys])
-            kv_len = (stacked.key_cache[0].shape[-2] if hasattr(stacked, "key_cache")
-                      else stacked[0][0].shape[-2])
-            full_mask = torch.cat(
-                [torch.ones((B, kv_len), dtype=attn.dtype, device=device), suffix_mask],
-                dim=1,
-            )
-            suffix_embeds = embed_tokens(suffix_ids)
-            dec_suffix = decoder(
-                inputs_embeds=suffix_embeds,
-                attention_mask=full_mask,
-                past_key_values=stacked,
-                use_cache=False,
-                return_dict=True,
-            )
-            last_hidden = dec_suffix.last_hidden_state[:, -1, :]
-            last_hidden = last_hidden.type_as(self.model.reward_head.weight)
-            rewards = self.model.reward_head(last_hidden).squeeze(-1)
+            # 2) Forward only the suffix, reusing each row's cached prefix, in
+            #    sub-batches (bounds the stacked-cache + suffix-activation memory).
+            rewards_parts = []
+            for s in range(0, B, fwd_chunk):
+                e = min(s + fwd_chunk, B)
+                stacked = self._stack_kv([cache[k] for k in image_keys[s:e]])
+                kv_len = stacked[0][0].shape[-2]
+                suffix_mask = suffix_mask_all[s:e]
+                full_mask = torch.cat(
+                    [torch.ones((e - s, kv_len), dtype=attn.dtype, device=device),
+                     suffix_mask],
+                    dim=1,
+                )
+                suffix_embeds = embed_tokens(suffix_ids_all[s:e])
+                # use_cache=False: the patched attention concatenates the cached
+                # prefix whenever a past is supplied (independent of use_cache), so
+                # the prefix is still used but the decoder does NOT build a
+                # full-length output cache across all layers.
+                dec_suffix = decoder(
+                    inputs_embeds=suffix_embeds,
+                    attention_mask=full_mask,
+                    past_key_values=stacked,
+                    use_cache=False,
+                    return_dict=True,
+                )
+                last_hidden = dec_suffix.last_hidden_state[:, -1, :]
+                last_hidden = last_hidden.type_as(self.model.reward_head.weight)
+                rewards_parts.append(self.model.reward_head(last_hidden).squeeze(-1))
+            rewards = torch.cat(rewards_parts, dim=0)
         return rewards.detach().float().cpu().tolist()
 
 

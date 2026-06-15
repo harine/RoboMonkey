@@ -445,6 +445,13 @@ def main() -> None:
     parser.add_argument("--softmax-temp", type=float, default=1.0,
                         help="Temperature for --mode softmax. Lower -> more "
                              "argmax-like; higher -> more uniform. Default 1.0.")
+    parser.add_argument("--no-resume", action="store_true",
+                        help="Disable per-episode resume. By default, if "
+                             "<output_dir>/episodes.jsonl exists, episodes "
+                             "already completed for a seed are reused (same "
+                             "seed -> identical deterministic rollout) and only "
+                             "the NEW seeds are run — so re-running a cell with "
+                             "a larger --num-episodes just adds episodes.")
     parser.add_argument("--viz-q", action="store_true",
                         help="Save per-replan sampled candidate actions + "
                              "verifier values + frame to "
@@ -507,10 +514,34 @@ def main() -> None:
     policy, cfg = load_policy(
         checkpoint=args.checkpoint, device=device, use_ema=not args.no_ema,
     )
+    # Inference-time override of how many predicted-horizon steps are executed
+    # per replan. The policy ALWAYS predicts the full horizon; n_action_steps
+    # only sets the executed window [n_obs_steps-1 : +n_action_steps] (and, for
+    # --score-window executed, how many steps the verifier scores). This lets a
+    # trained 8-step policy be evaluated at e.g. 4 steps without retraining.
+    # Set via the N_ACTION_STEPS env var (eval_search.sh passes the env through).
+    import os as _os_env
+    _nas_env = _os_env.environ.get("N_ACTION_STEPS")
+    if _nas_env:
+        _new_nas = int(_nas_env)
+        try:
+            from omegaconf import OmegaConf as _OC
+            _OC.set_struct(cfg, False)
+        except Exception:
+            pass
+        _old_nas = int(getattr(policy, "n_action_steps", cfg.n_action_steps))
+        if hasattr(policy, "n_action_steps"):
+            policy.n_action_steps = _new_nas
+        cfg.n_action_steps = _new_nas
+        print(f"[eval] N_ACTION_STEPS override: n_action_steps {_old_nas} -> "
+              f"{_new_nas} (execute {_new_nas} of horizon="
+              f"{int(cfg.get('horizon', 0))} per replan)")
     # BC checkpoint (e.g. DiffusionUnetImagePolicy) has no predict_n_actions or
     # verifier. Wrap it with BCSearchWrapper so the rest of the eval harness works
     # unchanged: N independent BC samples are scored by the in-process verifier.
+    _bc_wrapped = False
     if not hasattr(policy, "predict_n_actions"):
+        _bc_wrapped = True
         import os as _os
         from diffusion_policy.policy.verifiers import RoboMonkeyVerifier
         from diffusion_policy.policy.search_policy_robomonkey import BCSearchWrapper
@@ -567,7 +598,19 @@ def main() -> None:
     # --score-agg, so the candidate value = quality of the whole executed
     # chunk. 'last': leave the verifier's single action_chunk_index (default).
     _score_indices = None
-    if args.score_window == "executed":
+    if _bc_wrapped:
+        # BCSearchWrapper does its OWN per-step chunk scoring: it slices the
+        # executed window itself and calls verifier.get_value with single-step
+        # actions (shape (M, 1, 7)), aggregating via BC_VERIFIER_SCORE/AGG.
+        # Setting a multi-index score_indices here would make get_value do
+        # action[:, [1..nas], :] on a horizon-1 tensor -> CUDA device-side
+        # assert (index out of bounds). Leave it single-step for BC.
+        policy.verifier.score_indices = None
+        print(f"[eval] verifier scoring = BC wrapper chunk scoring "
+              f"(BC_VERIFIER_SCORE={_os.environ.get('BC_VERIFIER_SCORE', 'chunk')}, "
+              f"BC_VERIFIER_AGG={_os.environ.get('BC_VERIFIER_AGG', 'mean')}); "
+              f"verifier.score_indices left single-step")
+    elif args.score_window == "executed":
         _To = int(policy.n_obs_steps)
         _nas = int(policy.n_action_steps)
         _start = _To - 1
@@ -597,9 +640,37 @@ def main() -> None:
     print(f"[eval] instruction: {instr!r}")
 
     output_dir = Path(args.output_dir) if args.output_dir else None
+    done_by_seed: Dict[int, Dict[str, Any]] = {}
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
-        ep_log_file = open(output_dir / "episodes.jsonl", "w")
+        _ep_path = output_dir / "episodes.jsonl"
+        # Per-episode resume: load episodes already completed (keyed by seed)
+        # before truncating, so a re-run with more episodes reuses them.
+        if (not args.no_resume) and _ep_path.exists():
+            _skipped_errors = 0
+            for _line in _ep_path.read_text().splitlines():
+                try:
+                    _r = json.loads(_line)
+                except Exception:
+                    continue
+                if not (isinstance(_r, dict) and "seed" in _r and "success" in _r):
+                    continue
+                # Do NOT treat an errored episode as completed. A CUDA
+                # device-side assert poisons the process context, so once one
+                # fires every remaining episode in that run is logged as an
+                # instant failure ({"error": ..., "num_steps": 0}). Reusing
+                # those would pin the cell's SR at a garbage value forever;
+                # drop them here so this run actually re-runs those seeds.
+                if _r.get("error") or _r.get("num_steps") in (None, 0):
+                    _skipped_errors += 1
+                    continue
+                done_by_seed[int(_r["seed"])] = _r
+            if done_by_seed or _skipped_errors:
+                print(f"[eval] resume: reusing {len(done_by_seed)} completed "
+                      f"episode(s) from {_ep_path.name}"
+                      + (f"; re-running {_skipped_errors} previously-errored "
+                         f"episode(s)" if _skipped_errors else ""))
+        ep_log_file = open(_ep_path, "w")
     else:
         ep_log_file = None
 
@@ -648,6 +719,25 @@ def main() -> None:
         # frames/candidate actions for all of them. 0 = all (legacy).
         viz_q_lim = int(args.viz_q_episodes)
         ep_viz_q = viz_q and (viz_q_lim <= 0 or i < viz_q_lim)
+
+        # Resume: reuse a previously-completed episode for this seed (its
+        # render data / video, if any, are already on disk). Accumulate its
+        # outcome and re-emit its record at the current position.
+        if ep_seed in done_by_seed:
+            rec = dict(done_by_seed[ep_seed]); rec["ep_idx"] = i
+            successes += int(rec.get("success", 0))
+            truncations += int(rec.get("truncated", 0))
+            if rec.get("selected_indices"):
+                all_selected_indices.extend(int(x) for x in rec["selected_indices"])
+            durations.append(float(rec.get("duration_s", 0.0)))
+            if ep_log_file is not None:
+                ep_log_file.write(json.dumps(rec) + "\n"); ep_log_file.flush()
+            sr_so_far = successes / float(i + 1)
+            print(f"[eval] ep={i+1:3d}/{num_episodes}  seed={ep_seed}  REUSED  "
+                  f"success={int(rec.get('success', 0))}  "
+                  f"running_sr={sr_so_far:.3f}", flush=True)
+            continue
+
         ep_t0 = time.time()
         try:
             ep = rollout_episode(
@@ -665,6 +755,20 @@ def main() -> None:
             print(f"[eval] episode {i} (seed={ep_seed}) raised: {e!r}")
             import traceback as _tb
             _tb.print_exc()
+            # A CUDA device-side assert (or any CUDA error) corrupts the
+            # process's CUDA context: every subsequent kernel launch throws the
+            # same error, so continuing would just log all remaining seeds as
+            # instant phantom failures and tank the cell's SR. Abort the run
+            # hard instead. We do NOT write a record for this seed, so on the
+            # next launch resume reuses the good episodes and re-runs this one
+            # (and the rest) in a fresh process.
+            if "CUDA error" in str(e) or "device-side assert" in str(e):
+                print(f"[eval] FATAL: CUDA context corrupted at seed={ep_seed}; "
+                      f"aborting run without logging phantom failures. "
+                      f"Re-launch to resume the remaining seeds.", flush=True)
+                if ep_log_file is not None:
+                    ep_log_file.flush()
+                raise
             ep = {"success": False, "truncated": False, "num_steps": 0,
                   "error": repr(e), "steps": [], "frames": [], "branches": None,
                   "cam_K": None, "cam_T_wc": None, "base_pose_world": None}

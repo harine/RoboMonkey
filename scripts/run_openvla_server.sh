@@ -45,11 +45,28 @@ fi
 
 # Conda's cuda-nvcc activation script injects a -ccbin= via NVCC_PREPEND_FLAGS
 # and points CC/CXX at x86_64-conda-linux-gnu-* binaries that aren't installed.
-# Clear both so torch falls back to the system gcc (11.4 on Ubuntu 22.04).
+# Clear them.
 unset NVCC_PREPEND_FLAGS NVCC_APPEND_FLAGS CC CXX
 
+# FlashInfer's JIT host-compile needs gcc>=9 (torch C++17). klone (RHEL8) ships
+# gcc 8.5 in /usr/bin, which crashes the sgl.Runtime startup build ("too old
+# version of GCC"). Load a modern gcc and pin it as the host compiler EXPLICITLY
+# (CC/CXX/CUDAHOSTCXX) — PATH order alone isn't enough because CUDA_HOME//usr/bin
+# go first below. On Ubuntu nodes (gcc 11.4) the module load just no-ops.
+source /etc/profile.d/modules.sh 2>/dev/null || source /usr/share/lmod/lmod/init/bash 2>/dev/null || true
+module load gcc/11.2.0 2>/dev/null || module load gcc/9.3.0 2>/dev/null || true
+_GXX="$(command -v g++ || true)"
+if [ -n "$_GXX" ] && [ "$(gcc -dumpversion 2>/dev/null | cut -d. -f1)" -ge 9 ]; then
+    export CC="$(command -v gcc)" CXX="$_GXX" CUDAHOSTCXX="$_GXX"
+    _GCCBIN="$(dirname "$_GXX")"
+    echo "host compiler: $CXX (gcc $(gcc -dumpversion))"
+else
+    _GCCBIN=/usr/bin
+    echo "WARNING: no gcc>=9 found; FlashInfer JIT may fail on this node."
+fi
+
 export CUDA_HOME="$CONDA_PREFIX/cuda_home"
-export PATH="$CUDA_HOME/bin:/usr/bin:$PATH"
+export PATH="$CUDA_HOME/bin:$_GCCBIN:/usr/bin:$PATH"
 export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
 
 full_path=$(realpath "$0")

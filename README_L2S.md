@@ -484,45 +484,52 @@ preprocessing was **not** the bottleneck — the LLM forward is.
 Knobs: `ROBOMONKEY_PROC_IMAGE_CACHE_SIZE`, `ROBOMONKEY_IMAGE_FEAT_CACHE_SIZE`
 (default 512), `ROBOMONKEY_PAIRED_CHUNK_SIZE` (default 4).
 
-### 2. Per-image prefix-KV reuse — BUILT but DISABLED (blocked)
+### 2. Per-image prefix-KV reuse — WORKING (gated, ~4.3× on the verifier loop)
 Idea: encode each image's `image + instruction` prefix **once**, cache its KV,
-and on rounds 2–15 forward only the ~10-token action suffix → skip re-encoding
-the 576 image tokens. ~5× fewer verifier FLOPs; also fixes the eval/BoN
-`use_kv_cache_prefix` path. Wired end-to-end and **gated off by default**:
+and on the remaining rounds forward only the short action suffix → skip
+re-encoding the image tokens. Measured **~4.3×** on the verifier loop
+(`test_verifier_kvprefix.py`, 16-image chunk × 15 rounds on an a40: 110 → 26
+ms/score). Wired end-to-end:
 
 - `infer_server.py`: `get_rewards_paired_kvprefix`, `_slice_kv`, `_stack_kv`,
-  `clear_prefix_cache`.
+  `clear_prefix_cache`. Prefill + suffix forwards are sub-batched by
+  `ROBOMONKEY_KV_FWD_CHUNK` (default 16) so peak memory is bounded regardless of
+  the pair count (chunk-sum scores `images × horizon` pairs per call).
 - `verifier_client.py`: `score_paired_kvprefix`, `clear_prefix_cache`.
 - `verifiers.py`: `get_value` kvprefix branch, `set_kv_prefix`,
   `clear_prefix_cache`, `supports_kv_prefix`.
 - `search_policy_robomonkey.py`: `_run_search` chunks the batch by image
   (`ROBOMONKEY_KV_CHUNK`, default 16) and runs all rounds per chunk so only the
-  chunk's prefixes are resident (≈chunk×300 MB on a 48 GB a40).
+  chunk's prefixes are resident (≈ chunk × `n_layers` × `prefix_len` KV).
+- `llama_with_flash_attention.py` (`orig_forward`): the custom flash attention
+  now (a) populates the 3-tuple cache `(key, value, num_tokens)` on a fresh
+  prefill (`cache_shape is None`), and (b) concatenates a supplied prefix KV
+  **independent of `use_cache`** so the suffix forward runs `use_cache=False`
+  and the decoder does not accumulate a full-length output cache (that was
+  `O(batch × total_len)` and OOM'd at large batch).
 
-**Why it's disabled — the blocker.** The verifier loads with a *custom
-flash-attention* `LlamaAttention`
-(`llava_setup/LLaVA/.../llama_with_flash_attention.py`, transformers 4.31). Its
-`forward` returns `None` for `past_key_value`, and `orig_forward` only builds a
-cache from a **pre-allocated buffer (`cache_shape`)** or an **existing past** —
-a fresh prefill returns `None`. It also uses a non-standard **3-tuple cache**
-`(key, value, num_tokens)` and requires a **4D attention mask** the flash
-`_prepare_decoder_attention_mask` doesn't produce. So `past_key_values` comes
-back as a tuple-of-None (the same reason the eval KV path silently falls back).
+**It is NOT bit-exact vs the single full forward — and that is expected.** A
+chunked/cached forward rounds differently than one full forward in bf16: the
+prefix (≈350-token) and suffix (≈70-token) GEMMs use different cuBLAS shapes
+than the ≈420-token full forward, so per-row results differ by ~1 ULP and that
+compounds over 32 layers to ~0.1 on rewards of O(1–3). This is purely numerical,
+**not a logic bug** — proven by: prefix embeds bit-identical to the full
+forward; the suffix fed the *exact* full-forward prefix K/V still diverges ~0.09
+(so it is the suffix's own shape-dependent GEMMs, not the cache); both paths are
+perfectly repeatable; and `CUBLAS_WORKSPACE_CONFIG=:4096:8` does not change it.
+Bit-exactness is impossible with any KV split (only the full forward is exact).
+The verifier already runs with `use_deterministic_algorithms(True, warn_only)`
+but `CUBLAS_WORKSPACE_CONFIG` is unset, so cuBLAS stays shape-dependent.
 
-**To finish it (TODO):**
-1. Edit `orig_forward` so the `cache_shape=None` + fresh-prefill case populates
-   the 3-tuple cache from the current (post-rotary, pre-`repeat_kv`) K/V.
-2. Build correct 4D causal masks + `position_ids` for the prefix and the
-   suffix-with-past forwards (prefix all-attend, suffix causal at positions
-   `kv_len..`). Use stock `LlamaModel._prepare_decoder_attention_mask` or
-   construct masks directly in `get_rewards_paired_kvprefix`.
-3. Adapt `_slice_kv` / `_stack_kv` to the 3-tuple cache format.
-4. Validate exactness vs the flash baseline (expect ~1e-3 from bf16) and
-   measure speedup with `scriptsv2/bon/test_verifier_kvprefix.py`; profile with
-   `bench_verifier_chunk.py` / `bench_verifier_image_cache.py`.
+**What matters for search is the ranking, and it is preserved.**
+`scriptsv2/bon/validate_kvprefix.py` (16 images × 16 candidates): **100% top-1
+action agreement**, Spearman ≈ 0.99, top-1 reward gap ~0.1. So the action the
+search selects is unchanged; only the absolute reward shifts by bf16 noise.
 
-**To enable once fixed:** `export ROBOMONKEY_KV_PREFIX=1` (and tune
-`ROBOMONKEY_KV_CHUNK`) in the training env. Default off = unchanged behavior.
+**To enable:** `export ROBOMONKEY_KV_PREFIX=1` (tune `ROBOMONKEY_KV_CHUNK` /
+`ROBOMONKEY_KV_FWD_CHUNK` for memory). Default off = unchanged (full-forward)
+behavior. Tests: `scriptsv2/bon/test_verifier_kvprefix.py` (determinism +
+ranking + speedup), `scriptsv2/bon/validate_kvprefix.py` (top-1 agreement).
 
 ### Launching the noise sweep
 `scriptsv2/train_search/train_noise_sweep.sbatch` runs the 2-GPU parallel sweep;

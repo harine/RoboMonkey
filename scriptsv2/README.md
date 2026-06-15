@@ -4,16 +4,17 @@ Scripts that move data from raw sources to trained diffusion-policy
 checkpoints, run SimplerEnv evaluations on those checkpoints, and analyze
 their action-variance / verifier-ranked performance.
 
-Organized into five sub-pipelines. Each directory is self-contained: the
+Organized into six sub-pipelines. Each directory is self-contained: the
 shell wrapper inside it knows how to find its sibling Python file.
 
 ```
 scriptsv2/
-├── bridge_to_zarr/      # 1. download + filter Bridge V2  →  SIMPLER-style zarr
-├── plot_zarr/           # 2. plot a (multi-)zarr dataset
-├── eval_diffusion/      # 3. evaluate a diffusion_policy ckpt in SimplerEnv
-├── bon_eval/            # 4. RoboMonkey best-of-N verifier sweeps
-└── action_variance/     # 5. measure per-step action variance (motivation for BON)
+├── data_collect/        # 1. roll out the RoboMonkey VLA in SIMPLER  →  zarr shards
+├── bridge_to_zarr/      # 2. download + filter Bridge V2  →  SIMPLER-style zarr
+├── plot_zarr/           # 3. plot a (multi-)zarr dataset
+├── eval_diffusion/      # 4. evaluate a diffusion_policy ckpt in SimplerEnv
+├── bon_eval/            # 5. RoboMonkey best-of-N verifier sweeps
+└── action_variance/     # 6. measure per-step action variance (motivation for BON)
 ```
 
 The companion **[README_L2S.md](../README_L2S.md)** walks through these
@@ -21,7 +22,48 @@ sub-pipelines end-to-end with concrete examples.
 
 ---
 
-## 1. `bridge_to_zarr/` — Bridge V2 → Zarr
+## 1. `data_collect/` — SIMPLER rollout collection
+
+Roll out the RoboMonkey/OpenVLA policy in SimplerEnv and write trajectories to
+SIMPLER-style zarr shards (the same layout `bridge_to_zarr.py` mirrors). Shards
+store **both successful and failed** episodes by default, plus the agentview RGB
+frames (`--save_images`), so they can train image- or state-conditioned policies.
+
+| Script | What it does |
+|---|---|
+| `collect_simpler.sh` | Task-parameterized collector wrapping `openvla-mini/.../collect_trajectories.py`. Pick the task with `TASK=` (`carrot`/`eggplant`/`spoon`/`stack`, or a raw `widowx_*` id); positional args are `START_INDEX NUM SHARD`. Activates `simpler_env`, runs headless via `xvfb-run`/osmesa. Requires a running OpenVLA sglang action server. |
+| `collect_simpler.sbatch` | A100 batch job for any task: launches the OpenVLA server in the background, waits for it to become healthy, then runs `collect_simpler.sh` and tears everything down on exit. Parameterized via `--export`. |
+| `filter_val_success.py` | Post-hoc filter: copy only the successful episodes out of a collected validation shard into a `*_val_success` zarr. |
+
+```bash
+# One carrot shard (success + fail, with images) on an A100 — server auto-launched:
+sbatch --export=ALL,TASK=carrot,START_INDEX=0,NUM=2000,SHARD=state0.zarr \
+    scriptsv2/data_collect/collect_simpler.sbatch
+
+# Other tasks: TASK=eggplant | spoon | stack. Override the GPU pool if needed:
+sbatch --partition=gpu-a40 --gres=gpu:a40:1 \
+    --export=ALL,TASK=eggplant,START_INDEX=0,NUM=2000,SHARD=state0.zarr \
+    scriptsv2/data_collect/collect_simpler.sbatch
+
+# Chain shards back-to-back so they queue in order:
+J=$(sbatch --parsable --export=ALL,TASK=carrot,START_INDEX=0,NUM=2000,SHARD=state0.zarr     scriptsv2/data_collect/collect_simpler.sbatch)
+J=$(sbatch --parsable --dependency=afterany:$J --export=ALL,TASK=carrot,START_INDEX=2000,NUM=2000,SHARD=state1.zarr scriptsv2/data_collect/collect_simpler.sbatch)
+
+# Run the collector directly against an already-running server (no SLURM):
+TASK=carrot bash scriptsv2/data_collect/collect_simpler.sh 0 2000 state0.zarr
+
+# Keep only successes (e.g. for a clean val set), no images:
+TASK=carrot ONLY_SUCCESSFUL=True SAVE_IMAGES=False \
+    bash scriptsv2/data_collect/collect_simpler.sh 0 500 val0.zarr
+```
+
+Shards land in `/gscratch/robotics/harine/data/<task>/` (e.g. `carrot_on_plate/`,
+`eggplant_in_basket/`) unless `OUT_DIR=` overrides it. Knobs: `TASK`, `OUT_DIR`,
+`SAVE_IMAGES` (default `True`), `ONLY_SUCCESSFUL` (default `False`),
+`INITIAL_SAMPLES` (samples/step for the recorded action mean/std), and
+`ACTION_SERVER_PORT` (default `3200`).
+
+## 2. `bridge_to_zarr/` — Bridge V2 → Zarr
 
 | Script | What it does |
 |---|---|
@@ -40,7 +82,7 @@ DRY_RUN=1 bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
 SKIP_CONVERT=1 bash scriptsv2/bridge_to_zarr/bridge_to_zarr.sh
 ```
 
-## 2. `plot_zarr/` — Zarr dataset plots
+## 3. `plot_zarr/` — Zarr dataset plots
 
 | Script | What it does |
 |---|---|
@@ -61,7 +103,7 @@ python scriptsv2/plot_zarr/plot_zarr.py \
     --align-to-arm-base
 ```
 
-## 3. `eval_diffusion/` — SimplerEnv evaluation
+## 4. `eval_diffusion/` — SimplerEnv evaluation
 
 | Script | What it does |
 |---|---|
@@ -87,7 +129,7 @@ python scriptsv2/eval_diffusion/eval_summary.py \
     data/eval/<run_b>/eval_log.json
 ```
 
-## 4. `bon_eval/` — Best-of-N verifier sweeps
+## 5. `bon_eval/` — Best-of-N verifier sweeps
 
 | Script | What it does |
 |---|---|
@@ -124,7 +166,7 @@ SKIP_MLP=0 bash scriptsv2/bon_eval/bon_eval.sh \
 
 Requires the monkey-verifier server running on `REWARD_SERVER_PORT` (default `3100`).
 
-## 5. `action_variance/` — Per-step action variance
+## 6. `action_variance/` — Per-step action variance
 
 | Script | What it does |
 |---|---|
@@ -141,10 +183,10 @@ N_SAMPLES=64 bash scriptsv2/action_variance/analyze_variance.sh
 ## Notes
 
 - `scripts/` (sibling directory) holds environment / infrastructure scripts
-  only (`setup.sh`, `env_*.sh`, `vulkan.sh`, `run_openvla_server.sh`) plus the
-  two SIMPLER rollout collectors (`collect_carrot_on_plate.sh`,
-  `collect_eggplant_in_basket.sh`). Those feed shards into the pipeline above
-  but are not part of `scriptsv2/`.
+  (`setup.sh`, `env_*.sh`, `vulkan.sh`, `run_openvla_server.sh`) plus the older
+  per-task SIMPLER collectors (`collect_carrot_on_plate.sh`,
+  `collect_eggplant_in_basket.sh`). The task-parameterized `data_collect/`
+  scripts above generalize those two; the originals are kept for reference.
 - All `bash *.sh` scripts here assume the `simpler_env` conda env exists and
   the `diffusion_policy` repo is cloned at `$DIFFUSION_POLICY_ROOT`
   (default `~/diffusion_policy`).
