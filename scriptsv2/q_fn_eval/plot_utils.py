@@ -1,7 +1,7 @@
-"""plot_utils.py — jax-free plotting shared by eval_q / eval_dqc / eval_robomonkey.
+"""plot_utils.py — jax-free plotting shared by eval_dqc / eval_robomonkey.
 
-Kept separate from eval_q.py (which imports JAX) so the monkey-verifier env —
-which has no jax — can still produce the combined comparison plot.
+Kept jax-free so the monkey-verifier env — which has no jax — can still produce
+the combined comparison plot.
 """
 from __future__ import annotations
 
@@ -35,11 +35,13 @@ def make_plot(df, out_path: Path, title: str, source: str) -> None:
     import pandas as pd
 
     df = df.copy()
-    metrics = []
-    if "q_value" in df and not df["q_value"].isna().all():
-        metrics.append(("q_value", "DQC Q value (min ensemble)"))
-    if "verifier_score" in df and not df["verifier_score"].isna().all():
-        metrics.append(("verifier_score", "RoboMonkey verifier score"))
+    _METRICS = [
+        ("q_value",        "DQC single-step Q (action critic)"),
+        ("q_chunk",        "DQC chunk Q (chunk critic, 8-step)"),
+        ("verifier_score", "RoboMonkey verifier score"),
+    ]
+    metrics = [(c, lbl) for c, lbl in _METRICS
+               if c in df and not df[c].isna().all()]
 
     ncol = len(metrics)
     fig, axes = plt.subplots(2, ncol, figsize=(7 * ncol, 9), squeeze=False)

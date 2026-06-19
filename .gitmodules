@@ -14,3 +14,7 @@
 	path = diffusion_policy
 	url = git@github.com:sriyash421/diffusion_policy.git
 	branch = harine/improved_verifier
+[submodule "dqc"]
+	path = dqc
+	url = git@github.com:sriyash421/dqc.git
+	branch = harine-simpler

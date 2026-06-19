@@ -16,3 +16,15 @@ plots/
 **/bon_q/
 *.mp4
 *.npz
+
+# DQC verifier checkpoints / finetune outputs / run state — large binaries + scratch
+dqc_checkpoint/
+dqc_checkpoint.zip
+dqc_eggplant_finetune/
+dqc_eggplant_finetune_all/
+.dqc_train_pid
+.dqc_train_pgid
+*.log
+state0.zarr/
+simpler_env_jax_torch_pre_cuda.txt
+tmrl/
