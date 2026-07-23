@@ -41,29 +41,54 @@ def _episode_bounds(episode_ends: np.ndarray) -> list[tuple[int, int]]:
 
 
 def _load_zarr_episodes(zarr_path: Path, image_obs_key: str):
-    """Yield (actions[T,7], images[T,H,W,3] uint8, success bool) per episode."""
+    """Yield (actions[T,7], images[T,H,W,3] uint8, success bool, task, dist[T]) per
+    episode. ``dist`` is the per-step eggplant->basket distance (insertive vs
+    receptive asset xyz); None if those obs keys are absent."""
     root = zarr.open(str(zarr_path), mode="r")
+    obs_keys = list(root["data/obs"].keys())
     actions = root["data/actions"]
     rewards = root["data/rewards"][:]
     images = root[f"data/obs/{image_obs_key}"]
     episode_ends = root["meta/episode_ends"][:]
     task_description = dict(root.attrs).get("task_description")
+    have_poses = ("insertive_asset_pose" in obs_keys and "receptive_asset_pose" in obs_keys)
+    insertive = root["data/obs/insertive_asset_pose"] if have_poses else None
+    receptive = root["data/obs/receptive_asset_pose"] if have_poses else None
     for start, end in _episode_bounds(episode_ends):
         if end - start <= 1:
             continue  # loader requires length > 1
         ep_actions = np.asarray(actions[start:end], dtype=np.float32)
         ep_images = np.asarray(images[start:end], dtype=np.uint8)
         success = bool(np.asarray(rewards[start:end]).max() > 0)
-        yield ep_actions, ep_images, success, task_description
+        dist = None
+        if have_poses:
+            ins = np.asarray(insertive[start:end], dtype=np.float32)[:, :3]
+            rec = np.asarray(receptive[start:end], dtype=np.float32)[:, :3]
+            dist = np.linalg.norm(ins - rec, axis=1).astype(np.float32)   # (T,)
+        yield ep_actions, ep_images, success, task_description, dist
 
 
-def _write_parquet(path: Path, actions: np.ndarray, task_index: int) -> None:
+def _write_parquet(path: Path, actions: np.ndarray, task_index: int,
+                   rewards: np.ndarray | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     n = actions.shape[0]
     action_col = pa.array([row.tolist() for row in actions], type=pa.list_(pa.float32()))
     task_col = pa.array(np.full(n, task_index, dtype=np.int64))
-    table = pa.table({"action": action_col, "task_index": task_col})
+    cols = {"action": action_col, "task_index": task_col}
+    if rewards is not None:
+        # Per-step dense reward column; the DQC loader uses it directly (else it
+        # derives a 0->1 ramp / zeros from labels.json).
+        cols["reward"] = pa.array(np.asarray(rewards, dtype=np.float32).tolist(),
+                                  type=pa.float32())
+    table = pa.table(cols)
     pq.write_table(table, path)
+
+
+def _distance_reward(dist: np.ndarray) -> np.ndarray:
+    """Normalized closeness in [0,1] (1 = at basket). Per-episode: 1 - dist/d0,
+    d0 = episode-start distance, clipped to [0,1]."""
+    d0 = max(float(dist[0]), 1e-6)
+    return np.clip(1.0 - dist / d0, 0.0, 1.0).astype(np.float32)
 
 
 def _write_video(path: Path, frames: np.ndarray, fps: int) -> None:
@@ -81,6 +106,10 @@ def main() -> None:
     parser.add_argument("--also", type=Path, nargs="*", default=[], help="Extra zarrs to append (continuing indices).")
     parser.add_argument("--out", type=Path, required=True, help="Output LeRobot dataset root.")
     parser.add_argument("--filter", choices=["success", "failure", "all"], default="success")
+    parser.add_argument("--reward", choices=["label", "distance"], default="label",
+                        help="label: loader derives ramp/zero from labels.json (v1/v2). "
+                             "distance: write a per-step normalized eggplant->basket "
+                             "closeness reward column in [0,1] (v3).")
     parser.add_argument("--task", default="put eggplant into yellow basket")
     parser.add_argument("--video-key", default="observation.images.image_0")
     parser.add_argument("--image-obs-key", default="agentview_image")
@@ -98,7 +127,7 @@ def main() -> None:
     task_text = args.task
 
     for zarr_path in [args.zarr, *args.also]:
-        for ep_actions, ep_images, success, zarr_task in _load_zarr_episodes(zarr_path, args.image_obs_key):
+        for ep_actions, ep_images, success, zarr_task, dist in _load_zarr_episodes(zarr_path, args.image_obs_key):
             if zarr_task and out_idx == 0 and args.task == parser.get_default("task"):
                 task_text = zarr_task  # prefer the task text stored in the zarr attrs
             if args.filter == "success" and not success:
@@ -110,8 +139,16 @@ def main() -> None:
             if ep_images.shape[0] < length:
                 raise ValueError(f"{zarr_path} ep {out_idx}: {ep_images.shape[0]} frames < {length} actions")
 
+            reward_col = None
+            if args.reward == "distance":
+                if dist is None:
+                    raise RuntimeError(f"{zarr_path}: --reward distance needs "
+                                       "insertive_asset_pose + receptive_asset_pose in obs")
+                reward_col = _distance_reward(dist[:length])
+
             chunk = f"chunk-{out_idx // 1000:03d}"
-            _write_parquet(out / "data" / chunk / f"episode_{out_idx:06d}.parquet", ep_actions, args.task_index)
+            _write_parquet(out / "data" / chunk / f"episode_{out_idx:06d}.parquet",
+                           ep_actions, args.task_index, rewards=reward_col)
             _write_video(out / "videos" / chunk / args.video_key / f"episode_{out_idx:06d}.mp4", ep_images[:length], args.fps)
 
             episodes_meta.append({"episode_index": out_idx, "tasks": [task_text], "length": length})

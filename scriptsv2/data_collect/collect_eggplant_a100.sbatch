@@ -39,6 +39,15 @@ echo "[sbatch] host=$(hostname)  gpu=$CUDA_VISIBLE_DEVICES"
 echo "[sbatch] START_INDEX=$START_INDEX NUM=$NUM SHARD=$SHARD"
 nvidia-smi -L || true
 
+# flashinfer's JIT host-compile needs GCC>=9 (PyTorch C++17). klone's default
+# is gcc 8.5.0, which makes sgl.Runtime crash at startup ("too old version of
+# GCC"). Load a modern gcc so nvcc's host compiler (PATH gcc/g++) satisfies it.
+# Inherited by the setsid'd server subprocess.
+source /etc/profile.d/modules.sh 2>/dev/null || source /usr/share/lmod/lmod/init/bash 2>/dev/null || true
+module load gcc/11.2.0 2>/dev/null || module load gcc/9.3.0 2>/dev/null || true
+export CUDAHOSTCXX="$(command -v g++ || true)"
+echo "[sbatch] gcc=$(gcc --version 2>/dev/null | head -1)  CUDAHOSTCXX=$CUDAHOSTCXX"
+
 LOG_DIR=/gscratch/robotics/harine/data/eggplant_in_basket
 mkdir -p "$LOG_DIR"
 TS="$(date +%Y_%m_%d-%H_%M_%S)"

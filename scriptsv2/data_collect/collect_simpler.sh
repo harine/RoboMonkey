@@ -41,9 +41,10 @@ TASK=${TASK:-carrot}
 case "$TASK" in
   carrot|widowx_carrot_on_plate)          SIM_TASK=widowx_carrot_on_plate;        TASK_DIR=carrot_on_plate ;;
   eggplant|widowx_put_eggplant_in_basket) SIM_TASK=widowx_put_eggplant_in_basket; TASK_DIR=eggplant_in_basket ;;
+  eggplant_wide|widowx_put_eggplant_in_basket_wide) SIM_TASK=widowx_put_eggplant_in_basket_wide; TASK_DIR=eggplant_reset_core_x-0.22_-0.06_y0.02_0.26 ;;
   spoon|widowx_spoon_on_towel)            SIM_TASK=widowx_spoon_on_towel;          TASK_DIR=spoon_on_towel ;;
   stack|widowx_stack_cube)                SIM_TASK=widowx_stack_cube;              TASK_DIR=stack_cube ;;
-  *) echo "[collect] unknown TASK='$TASK' (want carrot|eggplant|spoon|stack or a widowx_* id)"; exit 1 ;;
+  *) echo "[collect] unknown TASK='$TASK' (want carrot|eggplant|eggplant_wide|spoon|stack or a widowx_* id)"; exit 1 ;;
 esac
 
 OUT_DIR=${OUT_DIR:-/gscratch/robotics/harine/data/$TASK_DIR}
