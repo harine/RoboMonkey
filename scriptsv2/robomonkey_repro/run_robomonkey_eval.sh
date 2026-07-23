@@ -46,6 +46,9 @@ VERIFIER_ENV="${VERIFIER_ENV:-monkey-verifier}"  # HTTP infer_server.py
 if [ "${MODE}" = "inprocess" ]; then
   EVAL_ENV="${EVAL_ENV:-monkey-verifier}"
 else
+  # http and dqc both run the eval in simpler_env. http talks to a separate
+  # LLaVA verifier server; dqc loads the JAX DQC critic in-process (simpler_env
+  # is the only env with both JAX [DQC] and torch [SAPIEN]).
   EVAL_ENV="${EVAL_ENV:-simpler_env}"
 fi
 
@@ -63,9 +66,34 @@ case "$MODE" in
              # upstream 4090 default of 2). Result-identical, ~20x fewer calls.
              export REWARD_BATCH_SIZE="${REWARD_BATCH_SIZE:-64}" ;;
   inprocess) REWARD_PORT=0 ;;
-  *) echo "ERROR: MODE must be 'http' or 'inprocess', got '$MODE'"; exit 2 ;;
+  dqc)       REWARD_PORT=0 ;;   # in-process DQC Q-function; routed in get_rewards
+  *) echo "ERROR: MODE must be 'http', 'inprocess', or 'dqc', got '$MODE'"; exit 2 ;;
 esac
 ACTION_PORT=3200
+
+# --- DQC verifier config (MODE=dqc) -----------------------------------------
+# get_vla_action routes the CONTINUOUS candidate actions to the in-process DQC
+# critic (instead of the LLaVA token verifier) when VERIFIER_TYPE=dqc. Same
+# init+aug candidate set + argmax selection -> directly comparable to the LLaVA
+# inprocess run. Eval runs in simpler_env; keep JAX from preallocating the GPU
+# it shares with the sglang policy server + SAPIEN.
+if [ "$MODE" = "dqc" ]; then
+  export VERIFIER_TYPE=dqc
+  export DQC_CKPT_DIR="${DQC_CKPT_DIR:-/gscratch/robotics/harine/dqc_checkpoint/sd000s_137913.0.20260605_163017}"
+  export DQC_TEXT_EMB="${DQC_TEXT_EMB:-$REPO_ROOT/scriptsv2/q_fn_eval/task_emb.npy}"
+  export DQC_DISCOUNT="${DQC_DISCOUNT:-0.98}"
+  export VERIFIER_INSTRUCTION="${VERIFIER_INSTRUCTION:-put the eggplant in the basket}"
+  export VERIFIER_IMAGE_KEY="${VERIFIER_IMAGE_KEY:-agentview_image}"
+  export DIFFUSION_POLICY_ROOT="${DIFFUSION_POLICY_ROOT:-$REPO_ROOT/diffusion_policy}"
+  export XLA_PYTHON_CLIENT_PREALLOCATE=false
+  export XLA_PYTHON_CLIENT_MEM_FRACTION="${XLA_PYTHON_CLIENT_MEM_FRACTION:-0.35}"
+  # openvla_utils imports TensorFlow (image ops); stop it from preallocating the
+  # whole GPU so JAX (DQC) + SAPIEN have room on the shared card.
+  export TF_FORCE_GPU_ALLOW_GROWTH="${TF_FORCE_GPU_ALLOW_GROWTH:-true}"
+  if [ ! -d "$DQC_CKPT_DIR" ]; then
+    echo "ERROR: DQC_CKPT_DIR not found: $DQC_CKPT_DIR" >&2; exit 2
+  fi
+fi
 
 export HF_HOME="${HF_HOME:-/gscratch/robotics/harine/huggingface}"
 export MODEL_DIR="${MODEL_DIR:-$REPO_ROOT/model_dir}"
@@ -105,7 +133,11 @@ echo "============================================================"
 echo " RoboMonkey reproduction"
 echo "   MODE=$MODE  reward_port=$REWARD_PORT  action_port=$ACTION_PORT"
 echo "   TASK=$TASK  seeds=[$SEEDS]  init=$INIT_SAMPLES aug=$AUG_SAMPLES trials=$NUM_TRIALS"
-echo "   envs: vla=$VLA_ENV  eval=$EVAL_ENV ${MODE:+verifier=$VERIFIER_ENV}"
+case "$MODE" in
+  http) echo "   envs: vla=$VLA_ENV  eval=$EVAL_ENV  verifier=$VERIFIER_ENV (HTTP)";;
+  dqc)  echo "   envs: vla=$VLA_ENV  eval=$EVAL_ENV  verifier=DQC Q-fn in-process ($DQC_CKPT_DIR)";;
+  *)    echo "   envs: vla=$VLA_ENV  eval=$EVAL_ENV  verifier=LLaVA in-process";;
+esac
 echo "   GPUs visible: ${CUDA_VISIBLE_DEVICES:-<none>}"
 echo "   GPU_VLA=$GPU_VLA  GPU_EVAL=$GPU_EVAL ${GPU_VERIFIER:+GPU_VERIFIER=$GPU_VERIFIER}"
 echo "   out: $RUN_DIR"
@@ -187,8 +219,17 @@ echo "seed    success_rate    n_success/n_episodes    eval_log" >> "$SUMMARY"
 
 # --- per-seed eval ----------------------------------------------------------
 conda activate "$EVAL_ENV"
-cd "$OPENVLA_DIR"
-export PRISMATIC_DATA_ROOT=. PYTHONPATH=.
+# Per-job working dir for ./transfer_images, ./rollouts, ./output. The eval
+# writes the current frame to ./transfer_images/reward_img.jpg then reads it
+# back for the verifier, so CONCURRENT seed jobs MUST use distinct EVAL_CWD or
+# they race on that shared file. Default = OPENVLA_DIR (single-job behavior
+# unchanged). Imports + the eval script resolve via absolute OPENVLA_DIR, so
+# any CWD works.
+EVAL_CWD="${EVAL_CWD:-$OPENVLA_DIR}"
+mkdir -p "$EVAL_CWD"
+cd "$EVAL_CWD"
+export PRISMATIC_DATA_ROOT="$OPENVLA_DIR" PYTHONPATH="$OPENVLA_DIR"
+echo "[eval] CWD=$EVAL_CWD  (transfer_images/rollouts written here)"
 
 OVERALL_RC=0
 for SEED in $SEEDS; do
@@ -197,7 +238,7 @@ for SEED in $SEEDS; do
   EVAL_LOG="$RUN_DIR/eval_seed${SEED}.log"
   echo "[eval] seed=$SEED  reward_port=$REWARD_PORT  -> $EVAL_LOG"
   CUDA_VISIBLE_DEVICES="$GPU_EVAL" \
-  "${XVFB[@]}" python experiments/robot/simpler/run_simpler_eval.py \
+  "${XVFB[@]}" python "$OPENVLA_DIR/experiments/robot/simpler/run_simpler_eval.py" \
       --task_suite_name "$TASK" \
       --initial_samples "$INIT_SAMPLES" \
       --augmented_samples "$AUG_SAMPLES" \

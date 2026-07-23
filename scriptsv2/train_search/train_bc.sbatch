@@ -20,6 +20,7 @@
 #   sbatch scriptsv2/train_search/train_bc.sbatch
 #
 # Override env:
+#   HORIZON            (default: 16; predicted steps. n_action_steps=HORIZON/2)
 #   MAX_GRADIENT_STEPS (default: 7000)
 #   BATCH_SIZE         (default: config default 256)
 #   CONDA_ENV          (default: monkey-verifier)
@@ -53,6 +54,11 @@ OVERRIDES=(
 )
 if [[ -n "${NUM_EPOCHS:-}" ]]; then
     OVERRIDES+=("training.num_epochs=${NUM_EPOCHS}")
+fi
+# HORIZON = number of predicted action steps. n_action_steps follows the config
+# default (half the horizon), so HORIZON=8 -> predict 8, execute 4 per replan.
+if [[ -n "${HORIZON:-}" ]]; then
+    OVERRIDES+=("horizon=${HORIZON}")
 fi
 if [[ -n "${BATCH_SIZE:-}" ]]; then
     OVERRIDES+=(

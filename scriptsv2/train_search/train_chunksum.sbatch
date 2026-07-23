@@ -33,29 +33,52 @@ case "$POLICY" in
     tmrl)     LEVELS="";  RUN_COND=1;;
     *) echo "ERROR: bad POLICY '$POLICY'"; exit 1;;
 esac
-OUTDIR="data/train/chunksum/${POLICY}"   # relative to diffusion_policy/ (train cd's there)
+# Write checkpoints to gscratch by default (home has a ~10GB quota that
+# corrupted/killed saves -- e.g. noise0.8 died with "Disk quota exceeded").
+# Absolute hydra.run.dir works regardless of the train cd into diffusion_policy/.
+OUT_ROOT="${OUT_ROOT:-/gscratch/robotics/harine/RoboMonkey_data/train/chunksum}"
+OUTDIR="${OUT_ROOT}/${POLICY}"
 
 export CONDA_ENV="${CONDA_ENV:-monkey-verifier}"
 MAX_GRADIENT_STEPS="${MAX_GRADIENT_STEPS:-7000}"
+# Search breadth (candidates the policy conditions on). 16 = MAZE-consistent
+# (all maze_search* configs + the eggplant yaml use max_actions=16). This gives
+# cond_pos_emb = n_obs_steps(2) + (max_actions-1) = 17. NOTE: the old chunk-sum
+# checkpoints were trained at 8 (cond_pos_emb=9, a memory-reduction override) and
+# are NOT loadable at 16 -> training at 16 means retraining from scratch.
+MAX_ACTIONS="${MAX_ACTIONS:-16}"
 
 # In-process verifier speedups (same set the eval sweep uses). The image-feature
 # / processed-image caches make the chunk-sum scoring's repeated single-frame
 # scorings reuse one vision-tower encode per frame across the 8 executed steps x
-# N candidates. KV_PREFIX stays OFF (known _slice_kv crash); flip to 1 only once
-# that verifier bug is fixed (would collapse the per-candidate LLM forward too).
-export ROBOMONKEY_KV_PREFIX="${ROBOMONKEY_KV_PREFIX:-0}"
+# N candidates. KV_PREFIX is now ON: each frame's image+instruction prefix is
+# encoded once and its KV reused across the search rounds, so only the short
+# action suffix is forwarded per score. Measured 3.65x on the chunk-sum verifier
+# loop (scriptsv2/bon/bench_chunksum_kv.py: 109 -> 30 ms/score). NOT bit-exact vs
+# the full forward (~0.1 bf16 noise that compounds over 32 layers) but the action
+# the search SELECTS is unchanged (100% top-1 agreement; see validate_kvprefix.py
+# + README_L2S.md). KV_FWD_CHUNK bounds the prefill/suffix sub-batch memory.
+export ROBOMONKEY_KV_PREFIX="${ROBOMONKEY_KV_PREFIX:-1}"
 export ROBOMONKEY_KV_CHUNK="${ROBOMONKEY_KV_CHUNK:-16}"
+export ROBOMONKEY_KV_FWD_CHUNK="${ROBOMONKEY_KV_FWD_CHUNK:-16}"
 export ROBOMONKEY_IMAGE_FEAT_CACHE_SIZE="${ROBOMONKEY_IMAGE_FEAT_CACHE_SIZE:-512}"
 export ROBOMONKEY_PROC_IMAGE_CACHE_SIZE="${ROBOMONKEY_PROC_IMAGE_CACHE_SIZE:-512}"
+# Batch the chunk-sum scoring: each search get_value call scores the 8 executed
+# steps as ONE batched verifier forward (default chunk size 4 -> 2 forwards).
+# =8 collapses it to a single forward per candidate (~2x on the scoring path).
+export ROBOMONKEY_PAIRED_CHUNK_SIZE="${ROBOMONKEY_PAIRED_CHUNK_SIZE:-8}"
 
 # Chunk-sum scoring baked into the policy's verifier config (-> saved in the
-# checkpoint, so inference uses the SAME scoring). score_indices = the executed
-# window [1..n_action_steps]; score_agg=sum.
+# checkpoint, so inference uses the SAME scoring). score_executed_chunk=true lets
+# the search policy derive the scored window = the EXECUTED action steps
+# [n_obs_steps-1 .. +n_action_steps], so it tracks n_action_steps automatically
+# (instead of a hardcoded index list). score_agg=sum.
 export EXTRA_OVERRIDES="+training.max_gradient_steps=${MAX_GRADIENT_STEPS} \
 task.dataset.use_cache=true \
 task.dataset.dataset_dir=/gscratch/robotics/harine/data/eggplant_in_basket_complete \
-+policy.verifier.score_indices=[1,2,3,4,5,6,7,8] \
++policy.verifier.score_executed_chunk=true \
 +policy.verifier.score_agg=sum \
+policy.max_actions=${MAX_ACTIONS} \
 hydra.run.dir=${OUTDIR}"
 
 DEVICE=cuda:0 LEVELS="$LEVELS" RUN_COND="$RUN_COND" \
