@@ -25,6 +25,11 @@ dqc_eggplant_finetune_all/
 .dqc_train_pid
 .dqc_train_pgid
 *.log
+
+# Slurm job stdout (<name>-<jobid>.out), wandb run dirs, editor backups
+*.out
+wandb/
+*.bak
 state0.zarr/
 simpler_env_jax_torch_pre_cuda.txt
 tmrl/
