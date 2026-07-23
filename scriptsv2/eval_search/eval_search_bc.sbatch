@@ -45,8 +45,10 @@ export ROBOMONKEY_PROC_IMAGE_CACHE_SIZE="${ROBOMONKEY_PROC_IMAGE_CACHE_SIZE:-512
 # CHECKPOINT must be provided. The sbatch --export=ALL,CHECKPOINT=... pattern
 # is preferred; fall back to the most-recent bc run dir if not set.
 if [[ -z "${CHECKPOINT:-}" ]]; then
-    # Auto-locate latest bc checkpoint from training output.
-    CHECKPOINT="$(ls -td "$SLURM_SUBMIT_DIR"/diffusion_policy/data/outputs/*/*/robomonkey_eggplant_bc_*/checkpoints/latest.ckpt 2>/dev/null | head -1 || true)"
+    # Auto-locate latest bc checkpoint from training output. Run dirs are
+    # outputs/<date>/<time>_robomonkey_eggplant_bc_*/checkpoints/ (the bc tag is
+    # part of the time-named dir, NOT a separate level).
+    CHECKPOINT="$(ls -td "$SLURM_SUBMIT_DIR"/diffusion_policy/data/outputs/*/*robomonkey_eggplant_bc_*/checkpoints/latest.ckpt 2>/dev/null | head -1 || true)"
     if [[ -z "$CHECKPOINT" ]]; then
         echo "ERROR: CHECKPOINT not set and no bc checkpoint auto-located." >&2
         echo "  Pass via: CHECKPOINT=<path> sbatch eval_search_bc.sbatch" >&2

@@ -28,6 +28,10 @@ EVAL_SBATCH=scriptsv2/eval_search/eval_search_noise_sweep.sbatch
 TRAIN_OPTS="${TRAIN_OPTS:---account=socialrl --partition=gpu-l40 --gres=gpu:l40:1 --cpus-per-task=10 --mem=120G --time=24:00:00}"
 EVAL_OPTS="${EVAL_OPTS:---account=socialrl --partition=gpu-l40 --gres=gpu:l40:4 --cpus-per-task=20 --mem=320G --time=48:00:00}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
+# Training resume-chaining: each link resumes from latest.ckpt (training.resume
+# =True, checkpoint_every=1000), afterany so a walltime-killed link is continued
+# by the next; the link that hits max steps completes and later links no-op.
+TRAIN_CHAIN_LEN="${TRAIN_CHAIN_LEN:-3}"
 
 TRACK="data/eval/_chunksum_jobids.txt"
 mkdir -p "$(dirname "$TRACK")" data/train/chunksum
@@ -35,22 +39,29 @@ echo "# chunksum launch $(date)" >> "$TRACK"
 
 for pol in $POLICIES; do
     echo "=== $pol ==="
-    # --- TRAIN (1 GPU) ---
+    # --- TRAIN chain (1 GPU/link; afterany; each resumes latest.ckpt) ---
     export POLICY="$pol"
-    tjid=$(sbatch --parsable --job-name="tr_${pol}" --export=ALL $TRAIN_OPTS "$TRAIN_SBATCH")
-    echo "  train -> $tjid"
-    echo "$tjid train $pol" >> "$TRACK"
+    prev=""; last_tjid=""
+    for ((k=1; k<=TRAIN_CHAIN_LEN; k++)); do
+        if [[ -z "$prev" ]]; then
+            tjid=$(sbatch --parsable --job-name="tr_${pol}" --export=ALL $TRAIN_OPTS "$TRAIN_SBATCH")
+        else
+            tjid=$(sbatch --parsable --dependency=afterany:"$prev" \
+                   --job-name="tr_${pol}" --export=ALL $TRAIN_OPTS "$TRAIN_SBATCH")
+        fi
+        echo "  train link $k/$TRAIN_CHAIN_LEN -> $tjid${prev:+  (afterany:$prev)}"
+        echo "$tjid train $pol link$k" >> "$TRACK"
+        prev="$tjid"; last_tjid="$tjid"
+    done
 
-    # --- EVAL (afterok train) ---
-    # Export via environment so space-containing values (TCONT_LIST) survive.
-    export POLICIES_ONE="$pol"
+    # --- EVAL after the LAST training link completes (robust to a
+    #     walltime-killed earlier link). Env-exported so TCONT_LIST survives.
     export POLICIES="$pol" CKPT_DIR="$CKPT_DIR" SCORE_AGG="sum" NUM_WORKERS="$NUM_WORKERS"
     if [[ "$pol" == "tmrl" ]]; then export TCONT_LIST="0.0 0.4 0.8"; else unset TCONT_LIST; fi
-    ejid=$(sbatch --parsable --dependency=afterok:"$tjid" --job-name="ev_${pol}" \
+    ejid=$(sbatch --parsable --dependency=afterok:"$last_tjid" --job-name="ev_${pol}" \
         --export=ALL $EVAL_OPTS "$EVAL_SBATCH")
-    echo "  eval  -> $ejid (afterok:$tjid)"
-    echo "$ejid eval $pol afterok:$tjid" >> "$TRACK"
-    # reset POLICIES for next iter (loop var uses $pol, not $POLICIES)
+    echo "  eval  -> $ejid (afterok:$last_tjid)"
+    echo "$ejid eval $pol afterok:$last_tjid" >> "$TRACK"
 done
 unset POLICY POLICIES POLICIES_ONE CKPT_DIR SCORE_AGG TCONT_LIST 2>/dev/null || true
 

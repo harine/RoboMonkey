@@ -1,0 +1,415 @@
+{
+  "task": "stack_cube",
+  "env_task": "widowx_stack_cube",
+  "split": "train",
+  "dataset_dir": "/gscratch/robotics/harine/data/stack_cube_strict_sub50_diverse_start",
+  "zarr": "/gscratch/robotics/harine/data/stack_cube_strict_sub50_diverse_start/stack_cube_strict_sub50_diverse_start.zarr",
+  "start_seed": 100000,
+  "start_index": {
+    "state0.zarr": 0,
+    "state1.zarr": 1000
+  },
+  "n": 50,
+  "episodes": [
+    {
+      "ep_idx": 0,
+      "seed": 100069,
+      "out_start": 0,
+      "out_end": 38,
+      "src_shard": "state0.zarr",
+      "src_episode": 69
+    },
+    {
+      "ep_idx": 1,
+      "seed": 100097,
+      "out_start": 38,
+      "out_end": 61,
+      "src_shard": "state0.zarr",
+      "src_episode": 97
+    },
+    {
+      "ep_idx": 2,
+      "seed": 100160,
+      "out_start": 61,
+      "out_end": 86,
+      "src_shard": "state0.zarr",
+      "src_episode": 160
+    },
+    {
+      "ep_idx": 3,
+      "seed": 100182,
+      "out_start": 86,
+      "out_end": 106,
+      "src_shard": "state0.zarr",
+      "src_episode": 182
+    },
+    {
+      "ep_idx": 4,
+      "seed": 100220,
+      "out_start": 106,
+      "out_end": 128,
+      "src_shard": "state0.zarr",
+      "src_episode": 220
+    },
+    {
+      "ep_idx": 5,
+      "seed": 100243,
+      "out_start": 128,
+      "out_end": 156,
+      "src_shard": "state0.zarr",
+      "src_episode": 243
+    },
+    {
+      "ep_idx": 6,
+      "seed": 100263,
+      "out_start": 156,
+      "out_end": 176,
+      "src_shard": "state0.zarr",
+      "src_episode": 263
+    },
+    {
+      "ep_idx": 7,
+      "seed": 100327,
+      "out_start": 176,
+      "out_end": 207,
+      "src_shard": "state0.zarr",
+      "src_episode": 327
+    },
+    {
+      "ep_idx": 8,
+      "seed": 100397,
+      "out_start": 207,
+      "out_end": 225,
+      "src_shard": "state0.zarr",
+      "src_episode": 397
+    },
+    {
+      "ep_idx": 9,
+      "seed": 100428,
+      "out_start": 225,
+      "out_end": 254,
+      "src_shard": "state0.zarr",
+      "src_episode": 428
+    },
+    {
+      "ep_idx": 10,
+      "seed": 100499,
+      "out_start": 254,
+      "out_end": 286,
+      "src_shard": "state0.zarr",
+      "src_episode": 499
+    },
+    {
+      "ep_idx": 11,
+      "seed": 100527,
+      "out_start": 286,
+      "out_end": 314,
+      "src_shard": "state0.zarr",
+      "src_episode": 527
+    },
+    {
+      "ep_idx": 12,
+      "seed": 100567,
+      "out_start": 314,
+      "out_end": 344,
+      "src_shard": "state0.zarr",
+      "src_episode": 567
+    },
+    {
+      "ep_idx": 13,
+      "seed": 100572,
+      "out_start": 344,
+      "out_end": 373,
+      "src_shard": "state0.zarr",
+      "src_episode": 572
+    },
+    {
+      "ep_idx": 14,
+      "seed": 100594,
+      "out_start": 373,
+      "out_end": 401,
+      "src_shard": "state0.zarr",
+      "src_episode": 594
+    },
+    {
+      "ep_idx": 15,
+      "seed": 100681,
+      "out_start": 401,
+      "out_end": 430,
+      "src_shard": "state0.zarr",
+      "src_episode": 681
+    },
+    {
+      "ep_idx": 16,
+      "seed": 100682,
+      "out_start": 430,
+      "out_end": 460,
+      "src_shard": "state0.zarr",
+      "src_episode": 682
+    },
+    {
+      "ep_idx": 17,
+      "seed": 100684,
+      "out_start": 460,
+      "out_end": 487,
+      "src_shard": "state0.zarr",
+      "src_episode": 684
+    },
+    {
+      "ep_idx": 18,
+      "seed": 100692,
+      "out_start": 487,
+      "out_end": 508,
+      "src_shard": "state0.zarr",
+      "src_episode": 692
+    },
+    {
+      "ep_idx": 19,
+      "seed": 100748,
+      "out_start": 508,
+      "out_end": 537,
+      "src_shard": "state0.zarr",
+      "src_episode": 748
+    },
+    {
+      "ep_idx": 20,
+      "seed": 100750,
+      "out_start": 537,
+      "out_end": 560,
+      "src_shard": "state0.zarr",
+      "src_episode": 750
+    },
+    {
+      "ep_idx": 21,
+      "seed": 100810,
+      "out_start": 560,
+      "out_end": 589,
+      "src_shard": "state0.zarr",
+      "src_episode": 810
+    },
+    {
+      "ep_idx": 22,
+      "seed": 100842,
+      "out_start": 589,
+      "out_end": 607,
+      "src_shard": "state0.zarr",
+      "src_episode": 842
+    },
+    {
+      "ep_idx": 23,
+      "seed": 100859,
+      "out_start": 607,
+      "out_end": 634,
+      "src_shard": "state0.zarr",
+      "src_episode": 859
+    },
+    {
+      "ep_idx": 24,
+      "seed": 100870,
+      "out_start": 634,
+      "out_end": 657,
+      "src_shard": "state0.zarr",
+      "src_episode": 870
+    },
+    {
+      "ep_idx": 25,
+      "seed": 100874,
+      "out_start": 657,
+      "out_end": 676,
+      "src_shard": "state0.zarr",
+      "src_episode": 874
+    },
+    {
+      "ep_idx": 26,
+      "seed": 101003,
+      "out_start": 676,
+      "out_end": 693,
+      "src_shard": "state1.zarr",
+      "src_episode": 3
+    },
+    {
+      "ep_idx": 27,
+      "seed": 101116,
+      "out_start": 693,
+      "out_end": 720,
+      "src_shard": "state1.zarr",
+      "src_episode": 116
+    },
+    {
+      "ep_idx": 28,
+      "seed": 101162,
+      "out_start": 720,
+      "out_end": 751,
+      "src_shard": "state1.zarr",
+      "src_episode": 162
+    },
+    {
+      "ep_idx": 29,
+      "seed": 101174,
+      "out_start": 751,
+      "out_end": 780,
+      "src_shard": "state1.zarr",
+      "src_episode": 174
+    },
+    {
+      "ep_idx": 30,
+      "seed": 101216,
+      "out_start": 780,
+      "out_end": 815,
+      "src_shard": "state1.zarr",
+      "src_episode": 216
+    },
+    {
+      "ep_idx": 31,
+      "seed": 101242,
+      "out_start": 815,
+      "out_end": 836,
+      "src_shard": "state1.zarr",
+      "src_episode": 242
+    },
+    {
+      "ep_idx": 32,
+      "seed": 101277,
+      "out_start": 836,
+      "out_end": 874,
+      "src_shard": "state1.zarr",
+      "src_episode": 277
+    },
+    {
+      "ep_idx": 33,
+      "seed": 101286,
+      "out_start": 874,
+      "out_end": 906,
+      "src_shard": "state1.zarr",
+      "src_episode": 286
+    },
+    {
+      "ep_idx": 34,
+      "seed": 101345,
+      "out_start": 906,
+      "out_end": 932,
+      "src_shard": "state1.zarr",
+      "src_episode": 345
+    },
+    {
+      "ep_idx": 35,
+      "seed": 101372,
+      "out_start": 932,
+      "out_end": 964,
+      "src_shard": "state1.zarr",
+      "src_episode": 372
+    },
+    {
+      "ep_idx": 36,
+      "seed": 101485,
+      "out_start": 964,
+      "out_end": 995,
+      "src_shard": "state1.zarr",
+      "src_episode": 485
+    },
+    {
+      "ep_idx": 37,
+      "seed": 101504,
+      "out_start": 995,
+      "out_end": 1012,
+      "src_shard": "state1.zarr",
+      "src_episode": 504
+    },
+    {
+      "ep_idx": 38,
+      "seed": 101531,
+      "out_start": 1012,
+      "out_end": 1041,
+      "src_shard": "state1.zarr",
+      "src_episode": 531
+    },
+    {
+      "ep_idx": 39,
+      "seed": 101539,
+      "out_start": 1041,
+      "out_end": 1070,
+      "src_shard": "state1.zarr",
+      "src_episode": 539
+    },
+    {
+      "ep_idx": 40,
+      "seed": 101615,
+      "out_start": 1070,
+      "out_end": 1092,
+      "src_shard": "state1.zarr",
+      "src_episode": 615
+    },
+    {
+      "ep_idx": 41,
+      "seed": 101656,
+      "out_start": 1092,
+      "out_end": 1119,
+      "src_shard": "state1.zarr",
+      "src_episode": 656
+    },
+    {
+      "ep_idx": 42,
+      "seed": 101757,
+      "out_start": 1119,
+      "out_end": 1141,
+      "src_shard": "state1.zarr",
+      "src_episode": 757
+    },
+    {
+      "ep_idx": 43,
+      "seed": 101764,
+      "out_start": 1141,
+      "out_end": 1174,
+      "src_shard": "state1.zarr",
+      "src_episode": 764
+    },
+    {
+      "ep_idx": 44,
+      "seed": 101814,
+      "out_start": 1174,
+      "out_end": 1206,
+      "src_shard": "state1.zarr",
+      "src_episode": 814
+    },
+    {
+      "ep_idx": 45,
+      "seed": 101866,
+      "out_start": 1206,
+      "out_end": 1234,
+      "src_shard": "state1.zarr",
+      "src_episode": 866
+    },
+    {
+      "ep_idx": 46,
+      "seed": 101872,
+      "out_start": 1234,
+      "out_end": 1259,
+      "src_shard": "state1.zarr",
+      "src_episode": 872
+    },
+    {
+      "ep_idx": 47,
+      "seed": 101926,
+      "out_start": 1259,
+      "out_end": 1280,
+      "src_shard": "state1.zarr",
+      "src_episode": 926
+    },
+    {
+      "ep_idx": 48,
+      "seed": 101928,
+      "out_start": 1280,
+      "out_end": 1304,
+      "src_shard": "state1.zarr",
+      "src_episode": 928
+    },
+    {
+      "ep_idx": 49,
+      "seed": 101973,
+      "out_start": 1304,
+      "out_end": 1332,
+      "src_shard": "state1.zarr",
+      "src_episode": 973
+    }
+  ]
+}

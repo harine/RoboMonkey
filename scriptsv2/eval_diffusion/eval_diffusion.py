@@ -389,6 +389,30 @@ def load_policy(checkpoint: str, device: torch.device, use_ema: bool):
         f"action_norm_mode={cfg.get('action_norm_mode', 'gaussian')}"
     )
 
+    # VERIFIER_TYPE=dqc: replace the checkpoint's baked verifier (e.g. the LLaVA
+    # RoboMonkeyVerifier, which needs bitsandbytes / a LLaVA load not available in
+    # the JAX simpler_env) with the DQC Q-critic *before* instantiation, so the
+    # search policy loads with the DQC verifier (discounted chunk sum). Guarded by
+    # the env flag + presence of a verifier node, so BC/plain-diffusion loads are
+    # untouched.
+    import os as _os
+    if (_os.environ.get("VERIFIER_TYPE", "").lower() == "dqc"
+            and OmegaConf.select(cfg.policy, "verifier") is not None):
+        OmegaConf.set_struct(cfg.policy, False)
+        cfg.policy.verifier = {
+            "_target_": "diffusion_policy.policy.dqc_verifier.DQCVerifier",
+            "ckpt_dir": _os.environ["DQC_CKPT_DIR"],
+            "instruction": _os.environ.get("VERIFIER_INSTRUCTION",
+                                           "put the eggplant in the basket"),
+            "image_obs_key": _os.environ.get("VERIFIER_IMAGE_KEY", "agentview_image"),
+            "text_emb_file": _os.environ.get("DQC_TEXT_EMB"),
+            "discount": float(_os.environ.get("DQC_DISCOUNT", "0.98")),
+            "score_executed_chunk": True,
+            "score_agg": "discounted_sum",
+            "health_check": True,
+        }
+        print("[eval] load_policy: baked verifier -> DQCVerifier "
+              "(VERIFIER_TYPE=dqc, discounted_sum)")
     policy = hydra.utils.instantiate(cfg.policy)
 
     src_key = "ema_model" if (use_ema and "ema_model" in state_dicts) else "model"

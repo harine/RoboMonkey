@@ -65,7 +65,7 @@ CONDA_ENV="${CONDA_ENV:-simpler_env}"
 SAVE_VIDEOS="${SAVE_VIDEOS:-0}"
 VIDEO_FPS="${VIDEO_FPS:-10}"
 TASK="${TASK:-widowx_put_eggplant_in_basket}"
-MODE="${MODE:-argmax}"
+MODE="${MODE:-softmax}"             # default selection: softmax (set MODE=argmax for best-of-N)
 SOFTMAX_TEMP="${SOFTMAX_TEMP:-1.0}"  # used when MODE=softmax
 VIZ_Q="${VIZ_Q:-0}"               # 1 = dump sampled actions + values to search_q/
 VIZ_Q_EPISODES="${VIZ_Q_EPISODES:-0}"  # when VIZ_Q=1, only save render npz for
@@ -87,7 +87,12 @@ SCORE_WINDOW="${SCORE_WINDOW:-executed}"  # 'executed' = verifier scores each
                                   # n_action_steps) and aggregates (RoboMonkey-
                                   # faithful: rate the actions that run). 'last'
                                   # = single action_chunk_index (legacy).
-SCORE_AGG="${SCORE_AGG:-mean}"    # mean|sum|min over the executed-window scores
+SCORE_AGG="${SCORE_AGG:-}"        # mean|sum|min over the executed-window scores;
+                                  # empty (default) = use the checkpoint's baked
+                                  # score_agg, so eval matches training.
+SCORE_DISCOUNT="${SCORE_DISCOUNT:-}"  # geometric discount on later chunk steps
+                                  # (step t weighted by SCORE_DISCOUNT**t);
+                                  # empty = use ckpt baked (1.0 = uniform).
 
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate "$CONDA_ENV"
@@ -147,7 +152,8 @@ if [[ -n "$SAMPLE_SEED_BASE" && "$SAMPLE_SEED_BASE" != "0" ]]; then
     EXTRA_FLAGS+=(--sample-seed-base "$SAMPLE_SEED_BASE")
 fi
 EXTRA_FLAGS+=(--score-window "$SCORE_WINDOW")
-EXTRA_FLAGS+=(--score-agg "$SCORE_AGG")
+if [[ -n "$SCORE_AGG" ]]; then EXTRA_FLAGS+=(--score-agg "$SCORE_AGG"); fi
+if [[ -n "$SCORE_DISCOUNT" ]]; then EXTRA_FLAGS+=(--score-discount "$SCORE_DISCOUNT"); fi
 
 echo "============================================================"
 echo "  search-policy SimplerEnv eval"
@@ -174,7 +180,7 @@ if [[ "$STOCHASTIC_SAMPLING" == "1" ]]; then
 else
     echo "  sampling     : deterministic candidates (seed base=$SAMPLE_SEED_BASE)"
 fi
-echo "  score_window : $SCORE_WINDOW (agg=$SCORE_AGG)"
+echo "  score_window : $SCORE_WINDOW (agg=${SCORE_AGG:-<baked from ckpt>}, discount=${SCORE_DISCOUNT:-<baked>})"
 echo "  viz_q        : $VIZ_Q"
 echo "============================================================"
 
