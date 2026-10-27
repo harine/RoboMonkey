@@ -58,9 +58,9 @@ if [[ -z "${CHECKPOINT:-}" ]]; then
 fi
 export CHECKPOINT
 
-NUM_EPISODES="${NUM_EPISODES:-50}" \
+NUM_EPISODES="${NUM_EPISODES:-all}" \
     N_LIST="${N_LIST:-1 2 4 8 16 32 64 128 256 512 1024}" \
-    START_SEED="${START_SEED:-1000}" \
+    SPLIT="${SPLIT:-test}" \
     SOFTMAX_TEMP="${SOFTMAX_TEMP:-1.0}" \
     NUM_WORKERS="${NUM_WORKERS:-4}" \
     bash scriptsv2/eval_search/eval_search_bc.sh

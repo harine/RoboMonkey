@@ -22,7 +22,7 @@
 #     (baked) then scores ALL 8 predicted actions as the chunk (get_value uses
 #     range(H), priority over score_indices). Prediction horizon 8, rollout 4.
 #   * USE_EMA=0 — task-2 trained with training.use_ema=False (no ema_model in ckpt).
-#   * Seeds = BC BoN eval seeds: START_SEED=1000, 50 episodes (seeds 1000..1049).
+#   * Seeds = the checkpoint's split manifest, list SPLIT (default test).
 #
 # Runs in the dqc_jax env (simpler_env sim + JAX[DQC] in-process).
 #   sbatch --export=ALL,CHECKPOINT=<ckpt>,N_SAMPLES=4  eval_search_dqc_chunk.sbatch
@@ -33,10 +33,10 @@ cd "${SLURM_SUBMIT_DIR:-/mmfs1/home/harine/RoboMonkey}"
 : "${CHECKPOINT:?set CHECKPOINT (gaussian DQC-chunk search policy)}"
 
 N_SAMPLES="${N_SAMPLES:-4}"
-NUM_EPISODES="${NUM_EPISODES:-50}"
-START_SEED="${START_SEED:-1000}"
+NUM_EPISODES="${NUM_EPISODES:-all}"
+SPLIT="${SPLIT:-test}"
 N_ACTION_STEPS="${N_ACTION_STEPS:-4}"      # rollout 4 (matches training)
-OUT_DIR="${OUT_DIR:-data/eval/search_dqc_chunk/gaussian_chunk8_predh8_roll4_n${N_SAMPLES}_seed${START_SEED}_ep${NUM_EPISODES}}"
+OUT_DIR="${OUT_DIR:-data/eval/search_dqc_chunk/gaussian_chunk8_predh8_roll4_n${N_SAMPLES}_${SPLIT}_ep${NUM_EPISODES}}"
 mkdir -p data/eval/search_dqc_chunk "$OUT_DIR"
 
 export DIFFUSION_POLICY_ROOT="${DIFFUSION_POLICY_ROOT:-$SLURM_SUBMIT_DIR/diffusion_policy}"
@@ -50,7 +50,7 @@ export CUBLAS_WORKSPACE_CONFIG=":4096:8"
 echo "[srch_dqcchunk] host=$(hostname) ckpt=$CHECKPOINT"
 echo "[srch_dqcchunk] N=$N_SAMPLES  rollout(n_action_steps)=$N_ACTION_STEPS  pred_horizon=8(baked)"
 echo "[srch_dqcchunk] verifier=BAKED DQC chunk (score_full_horizon, q_agg=min); VERIFIER_TYPE unset"
-echo "[srch_dqcchunk] seeds=${START_SEED}..$((START_SEED+NUM_EPISODES-1))  episodes=$NUM_EPISODES  mode=${MODE:-softmax} softmax_temp=${SOFTMAX_TEMP:-1.0}  -> $OUT_DIR"
+echo "[srch_dqcchunk] split=$SPLIT  episodes=$NUM_EPISODES  mode=${MODE:-softmax} softmax_temp=${SOFTMAX_TEMP:-1.0}  -> $OUT_DIR"
 
 # Wall-clock timing of the whole eval (printed at the end + saved to time.txt).
 _t0=$(date +%s)
@@ -58,7 +58,7 @@ _t0=$(date +%s)
 CONDA_ENV="${CONDA_ENV:-dqc_jax}" DEVICE=cuda:0 \
   MODE="${MODE:-softmax}" SOFTMAX_TEMP="${SOFTMAX_TEMP:-1.0}" SCORE_WINDOW=last \
   N_SAMPLES="$N_SAMPLES" N_ACTION_STEPS="$N_ACTION_STEPS" \
-  START_SEED="$START_SEED" MAX_STEPS="${MAX_STEPS:-120}" USE_EMA=0 \
+  SPLIT="$SPLIT" MAX_STEPS="${MAX_STEPS:-120}" USE_EMA=0 \
   TASK="${TASK:-widowx_put_eggplant_in_basket}" \
   SAVE_VIDEOS="${SAVE_VIDEOS:-0}" VIDEO_FPS="${VIDEO_FPS:-10}" \
   VIZ_Q="${VIZ_Q:-0}" VIZ_Q_EPISODES="${VIZ_Q_EPISODES:-0}" \

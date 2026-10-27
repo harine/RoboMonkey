@@ -17,7 +17,7 @@
 #   OUT_DIR      output dir for this cell                (required)
 #   SCORE_AGG    mean|sum|min over executed steps        (default sum)
 #   N_ACTION_STEPS  executed steps/replan                (default 8)
-#   NUM_EPISODES (default 50)  SOFTMAX_TEMP (1.0)  START_SEED (1000)  TASK
+#   NUM_EPISODES (default all)  SOFTMAX_TEMP (1.0)  SPLIT (test)  TASK
 set -euo pipefail
 
 cd "${SLURM_SUBMIT_DIR:-/mmfs1/home/harine/RoboMonkey}"
@@ -41,9 +41,9 @@ CONDA_ENV="${CONDA_ENV:-monkey-verifier}" DEVICE=cuda:0 \
   SCORE_AGG="${SCORE_AGG:-sum}" SCORE_WINDOW=executed \
   SCORE_DISCOUNT="${SCORE_DISCOUNT:-}" \
   N_SAMPLES="$N" N_ACTION_STEPS="${N_ACTION_STEPS:-8}" \
-  START_SEED="${START_SEED:-1000}" MAX_STEPS="${MAX_STEPS:-120}" USE_EMA=1 \
+  SPLIT="${SPLIT:-test}" MAX_STEPS="${MAX_STEPS:-120}" USE_EMA=1 \
   TASK="${TASK:-widowx_put_eggplant_in_basket}" \
   VIZ_Q="${VIZ_Q:-0}" VIZ_Q_EPISODES="${VIZ_Q_EPISODES:-0}" SAVE_VIDEOS="${SAVE_VIDEOS:-0}" \
-  bash scriptsv2/eval_search/eval_search.sh "$CHECKPOINT" "${NUM_EPISODES:-50}" "$OUT_DIR"
+  bash scriptsv2/eval_search/eval_search.sh "$CHECKPOINT" "${NUM_EPISODES:-all}" "$OUT_DIR"
 
 echo "[cell] done N=$N -> $OUT_DIR/eval_log.json"

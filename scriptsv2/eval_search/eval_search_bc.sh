@@ -10,8 +10,8 @@
 # Overrides (env):
 #   CHECKPOINT       path to bc latest.ckpt (set automatically by sbatch)
 #   N_LIST           (default: 1 2 4 8 16 32 64 128)
-#   NUM_EPISODES     (default: 50)
-#   START_SEED       (default: 1000)
+#   NUM_EPISODES     (default: all)
+#   SPLIT            (default: test; demo split whose seeds are rolled out)
 #   SOFTMAX_TEMP     (default: 1.0)
 #   NUM_WORKERS      (default: 4)  parallel GPU workers
 #   MAX_STEPS        (default: 120)
@@ -39,7 +39,7 @@ export VERIFIER_INSTRUCTION="${VERIFIER_INSTRUCTION:-put the eggplant in the bas
 export VERIFIER_IMAGE_KEY="${VERIFIER_IMAGE_KEY:-agentview_image}"
 
 read -ra N_ARR <<< "${N_LIST:-1 2 4 8 16 32 64 128 256 512 1024}"
-START_SEED="${START_SEED:-1000}"
+SPLIT="${SPLIT:-test}"
 # Selection mode: "softmax" (sample from softmax over candidate q-values) or
 # "argmax" (Best-of-N: execute the single highest-q-value candidate).
 MODE="${MODE:-softmax}"
@@ -47,14 +47,14 @@ MODE="${MODE:-softmax}"
 # ddim = trained deterministic sampler (control). Read by eval_search.py.
 BC_SAMPLER="${BC_SAMPLER:-ddim}"
 VIDEO_FPS="${VIDEO_FPS:-10}"
-# Every cell runs NUM_EPISODES rollouts from START_SEED (episode i -> seed
-# START_SEED+i) for the success-rate estimate. When VIZ_Q=1 we additionally save
+# Every cell rolls out the SPLIT demo seeds (first NUM_EPISODES of them) for the
+# success-rate estimate. When VIZ_Q=1 we additionally save
 # render data (frames + candidate chunks + q-values + camera transforms ->
 # <out>/search_q/*.npz) and an MP4 for only the FIRST VIZ_Q_EPISODES episodes —
-# i.e. seeds START_SEED..START_SEED+VIZ_Q_EPISODES-1, the SAME fixed seeds across
+# i.e. the first VIZ_Q_EPISODES split seeds, the SAME fixed seeds across
 # every N cell, so the renders are directly comparable. (Mirrors the noise sweep.)
-NUM_EPISODES="${NUM_EPISODES:-50}"
-SEEDS=""   # use start-seed sweep (episode i -> START_SEED+i), not a fixed list
+NUM_EPISODES="${NUM_EPISODES:-all}"
+SEEDS=""   # use the SPLIT manifest, not a fixed list
 VIZ_Q="${VIZ_Q:-1}"
 if [[ "$VIZ_Q" == "1" ]]; then
     VIZ_Q_EPISODES="${VIZ_Q_EPISODES:-10}"
@@ -100,8 +100,8 @@ LOCK_FILE="$WORK_DIR/queue.lock"
         echo "mode           : softmax (temp=${SOFTMAX_TEMP})"
     fi
     echo "bc_sampler     : $BC_SAMPLER  (ddpm=stochastic ancestral, ddim=deterministic)"
-    echo "episodes       : $NUM_EPISODES from start_seed=$START_SEED (SR over all)"
-    echo "viz_q          : $VIZ_Q  (render data for first $VIZ_Q_EPISODES eps = seeds ${START_SEED}..$((START_SEED+VIZ_Q_EPISODES-1)))"
+    echo "episodes       : $NUM_EPISODES from split=$SPLIT (SR over all)"
+    echo "viz_q          : $VIZ_Q  (render data for first $VIZ_Q_EPISODES split eps)"
     echo "save_videos    : $SAVE_VIDEOS  (fps=$VIDEO_FPS)"
     echo "num_workers    : $NUM_WORKERS  (1 GPU per worker)"
     echo "task           : $TASK"
@@ -123,7 +123,7 @@ cell_out_dir() {
     local n="$1"
     local tag="softmaxT${SOFTMAX_TEMP}"
     [[ "$MODE" == "argmax" ]] && tag="argmax"
-    echo "data/eval/search_bc_sweep/${BC_LABEL}/${tag}_${BC_SAMPLER}_n${n}_seed${START_SEED}_ep${NUM_EPISODES}"
+    echo "data/eval/search_bc_sweep/${BC_LABEL}/${tag}_${BC_SAMPLER}_n${n}_${SPLIT}_ep${NUM_EPISODES}"
 }
 
 append_result_row() {
@@ -169,7 +169,7 @@ run_cell() {
                 BC_SAMPLER="$BC_SAMPLER" \
                 SOFTMAX_TEMP="$SOFTMAX_TEMP" \
                 N_SAMPLES="$n" \
-                START_SEED="$START_SEED" \
+                SPLIT="$SPLIT" \
                 SEEDS="$SEEDS" \
                 MAX_STEPS="$MAX_STEPS" \
                 USE_EMA=1 \

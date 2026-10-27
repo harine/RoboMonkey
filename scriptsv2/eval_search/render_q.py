@@ -156,12 +156,12 @@ def _rmse_to_astar(cand: np.ndarray, a_star: np.ndarray) -> np.ndarray:
 def _overlay_legend_box(scene: np.ndarray, *, seed, branch_t, status, n_cand,
                         mode, has_astar, a_star_rank=None, a_star_q=None,
                         top1_match=None, top3_match=None) -> np.ndarray:
-    """Draw a compact, semi-transparent legend box in the TOP-RIGHT corner of
-    the scene (in place) — same color key + per-frame metrics as the old side
-    panel, but overlaid on the frame instead of widening the video."""
+    """Render the color key + per-frame metrics in a solid panel to the RIGHT of
+    the scene (OUTSIDE the image) and hstack it on, so nothing is drawn over the
+    frame. The diagnostic minRMSE-match rows (previously shown in red) are
+    omitted. (top1_match / top3_match are accepted but unused.)"""
     import cv2
-    img = scene
-    H, W = img.shape[:2]
+    H, W = scene.shape[:2]
     white = (235, 235, 235)
     grey = (170, 170, 170)
     st_color = {"succ": _OK_RGB, "fail": _BAD_RGB}.get(status, grey)
@@ -180,28 +180,13 @@ def _overlay_legend_box(scene: np.ndarray, *, seed, branch_t, status, n_cand,
         rows.append(("astar",))
         rows.append(("text", f"a* rank: {rk}", white))
         rows.append(("text", f"a* Q: {qv}", white))
-        if top1_match is not None:
-            rows.append(("text", f"top1=minRMSE? {'Y' if top1_match else 'N'}",
-                         _OK_RGB if top1_match else _BAD_RGB))
-        if top3_match is not None:
-            rows.append(("text", f"minRMSE@top3? {'Y' if top3_match else 'N'}",
-                         _OK_RGB if top3_match else _BAD_RGB))
 
-    fs, dy, pad = 0.4, 16, 7
-    box_w = min(W - 4, 208)
-    box_h = min(pad * 2 + len(rows) * dy, H - 8)
-    x0 = max(2, W - box_w - 6)
-    y0 = 6
-
-    # translucent dark background + thin border (so the scene stays visible)
-    ov = img.copy()
-    cv2.rectangle(ov, (x0, y0), (x0 + box_w, y0 + box_h), (0, 0, 0), -1)
-    cv2.addWeighted(ov, 0.58, img, 0.42, 0, img)
-    cv2.rectangle(img, (x0, y0), (x0 + box_w, y0 + box_h), (95, 95, 95), 1)
-
-    x = x0 + pad
-    cy = y0 + pad                      # top of the current row
-    bw = box_w - 2 * pad
+    fs, dy, pad = 0.44, 20, 10
+    panel_w = 232                       # even -> keeps libx264 happy after hstack
+    panel = np.full((H, panel_w, 3), 24, dtype=np.uint8)   # solid dark side panel
+    x = pad
+    cy = pad
+    bw = panel_w - 2 * pad
     for row in rows:
         kind = row[0]
         if kind == "bar":
@@ -210,25 +195,25 @@ def _overlay_legend_box(scene: np.ndarray, *, seed, branch_t, status, n_cand,
                 t = i / max(1, bw - 1)
                 col = (int(255 * (1 - t)), int(160 * (1 - abs(2 * t - 1))),
                        int(255 * t))
-                cv2.line(img, (x + i, cy + 3), (x + i, cy + 11), col, 1)
+                cv2.line(panel, (x + i, cy + 4), (x + i, cy + 13), col, 1)
         elif kind == "medals":
             cx = x + 5
             for r in range(3):
-                cv2.circle(img, (cx, cy + 7), 5, _MEDAL_RGB[r], -1, cv2.LINE_AA)
+                cv2.circle(panel, (cx, cy + 8), 5, _MEDAL_RGB[r], -1, cv2.LINE_AA)
                 cx += 13
-            cv2.putText(img, "top-3 by Q", (cx + 3, cy + 11),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.37, white, 1, cv2.LINE_AA)
+            cv2.putText(panel, "top-3 by Q", (cx + 3, cy + 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, white, 1, cv2.LINE_AA)
         elif kind == "astar":
-            _draw_dashed_polyline(img, np.array([[x, cy + 7], [x + 16, cy + 7]],
-                                                dtype=np.float32), _ASTAR_RGB, 2)
-            cv2.putText(img, "a* (recorded)", (x + 22, cy + 11),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.37, white, 1, cv2.LINE_AA)
+            _draw_dashed_polyline(panel, np.array([[x, cy + 8], [x + 16, cy + 8]],
+                                                  dtype=np.float32), _ASTAR_RGB, 2)
+            cv2.putText(panel, "a* (expert)", (x + 22, cy + 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, white, 1, cv2.LINE_AA)
         else:
             _, text, color = row
-            cv2.putText(img, text, (x, cy + 12), cv2.FONT_HERSHEY_SIMPLEX,
+            cv2.putText(panel, text, (x, cy + 13), cv2.FONT_HERSHEY_SIMPLEX,
                         fs, color, 1, cv2.LINE_AA)
         cy += dy
-    return img
+    return np.hstack([scene, panel])
 
 
 def _render_one_replan(
@@ -358,10 +343,12 @@ def _write_mp4(frames: Iterable[np.ndarray], path: Path, fps: int) -> bool:
             return False
 
 
-def render_npz(path: Path, out_dir: Path, fps: int, scale: float = 0.0) -> Optional[Path]:
+def render_npz(path: Path, out_dir: Path, fps: int, scale: float = 0.0, action_steps: int = 0) -> Optional[Path]:
     z = np.load(str(path), allow_pickle=False)
     frames = z["frames"]
     cand = z["candidate_actions"]
+    if action_steps:
+        cand = cand[:, :, :action_steps]
     vals = z["values"]
     sel_i = z["selected_index"]
     ep_idx = int(z["ep_idx"])
@@ -385,6 +372,8 @@ def render_npz(path: Path, out_dir: Path, fps: int, scale: float = 0.0) -> Optio
     # Offline (train/val) extras: recorded a* chunk + its Q / rank on the Q scale.
     has_astar = "a_star" in z.files
     a_star = z["a_star"] if has_astar else None              # (R, T_a, 7)
+    if a_star is not None and action_steps:
+        a_star = a_star[:, :action_steps]
     a_star_q = z["a_star_q"] if "a_star_q" in z.files else None    # (R,)
     a_star_rank = z["a_star_rank"] if "a_star_rank" in z.files else None  # (R,)
     # SimplerEnv widowx tasks mount the arm with a 180° yaw vs. the world
@@ -411,12 +400,17 @@ def render_npz(path: Path, out_dir: Path, fps: int, scale: float = 0.0) -> Optio
         K_mat[:2] *= scale
 
     R = frames.shape[0]
+    draw_cand=cand.copy()
+    verifier_scale=z['verifier_action_pos_scale'] if 'verifier_action_pos_scale' in z.files else np.ones(3)
+    draw_cand[...,:3]*=verifier_scale
+    draw_astar=None if a_star is None else a_star.copy()
+    if draw_astar is not None:draw_astar[...,:3]*=verifier_scale
     rendered: List[np.ndarray] = []
     for r in range(R):
         a_star_r = a_star[r] if has_astar else None
         scene = _render_one_replan(
             frame=frames[r],
-            cand=cand[r],
+            cand=draw_cand[r],
             values=vals[r],
             selected_index=int(sel_i[r]),
             ee_xyz=ee_xyz[r],
@@ -424,7 +418,7 @@ def render_npz(path: Path, out_dir: Path, fps: int, scale: float = 0.0) -> Optio
             T_wc=T_wc,
             mode=mode,
             R_wb=R_wb,
-            a_star=a_star_r,
+            a_star=draw_astar[r] if draw_astar is not None else None,
         )
 
         # Per-frame ranking-correctness metrics (only when a* is available).
@@ -451,6 +445,23 @@ def render_npz(path: Path, out_dir: Path, fps: int, scale: float = 0.0) -> Optio
             a_star_rank=a_rank, a_star_q=a_q,
             top1_match=top1_match, top3_match=top3_match,
         )
+        # Keep every score legible even when projected endpoints overlap.
+        panel = np.full((out_frame.shape[0], 460, 3), 24, dtype=np.uint8)
+        rows = ['Estimated EE paths (not physics rollouts)',
+                f'{cand.shape[2]} actions shown; higher verifier value is better',
+                'ID      value      raw sum dx/dy/dz (m)     grip mean']
+        for k in range(len(vals[r])):
+            delta = cand[r, k, :, :3].sum(axis=0)
+            grip = cand[r, k, :, -1].mean()
+            mark = '*' if k == int(sel_i[r]) else ' '
+            rows.append(f'{mark}{k:02d} {vals[r,k]:9.3f}  '
+                        f'{delta[0]:+.3f}/{delta[1]:+.3f}/{delta[2]:+.3f}  {grip:+.2f}')
+        import cv2
+        spacing = min(20, (panel.shape[0] - 12) // max(len(rows), 1))
+        for i, line in enumerate(rows):
+            cv2.putText(panel, line, (8, 16 + spacing*i), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.40, (235, 235, 235), 1, cv2.LINE_AA)
+        out_frame = np.hstack([out_frame, panel])
         rendered.append(out_frame)
 
     out_path = out_dir / f"ep{ep_idx:03d}_seed{seed}__N{int(vals.shape[1])}_{status}.mp4"
@@ -467,6 +478,8 @@ def main() -> None:
                    help="Frames per second (one frame per replan, default 3)")
     p.add_argument("--limit", type=int, default=0,
                    help="Render at most this many episodes (0 = all)")
+    p.add_argument("--action-steps", type=int, default=0,
+                   help="Show only the scored/executed prefix (0 = full prediction)")
     p.add_argument("--scale", type=float, default=0.0,
                    help="Frame upscale factor (0 = auto: 2x for frames <300px, "
                         "else 1x). cam_K scales with it so projection stays exact.")
@@ -489,7 +502,7 @@ def main() -> None:
     print(f"[render] {len(npz_paths)} episode(s) -> {out_dir}")
     ok_n = 0
     for npz in npz_paths:
-        out = render_npz(npz, out_dir, fps=args.fps, scale=args.scale)
+        out = render_npz(npz, out_dir, fps=args.fps, scale=args.scale, action_steps=args.action_steps)
         if out is not None:
             ok_n += 1
             print(f"  {npz.name} -> {out.name}")

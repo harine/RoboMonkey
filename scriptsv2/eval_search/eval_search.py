@@ -20,7 +20,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
+import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -42,8 +46,332 @@ from eval_diffusion import (  # type: ignore
 
 TASK_NAME = "widowx_put_eggplant_in_basket"
 
+# ONE seeding path. Episode seeds come from the split manifest (config/splits/simpler/), the
+# per-replan seed is SeedSequence([episode_seed, t]), and the policy draws obs-corruption
+# noise + every candidate's noise from its per-row stream keyed on that seed
+# (SearchProcedureMixin.set_sample_seeds), identically in the single-env and tiled paths.
+_SEED_KEY_SELECT = 1
+
+from diffusion_policy.common.dataset_provenance import load_split_file  # noqa: E402
+
+_REPO = Path(__file__).resolve().parents[2]
+
+
+def _resolve_split_file(path: str) -> Path:
+    """A split_file as written in a checkpoint cfg: absolute, or relative to the repo or
+    the diffusion_policy submodule (hydra's original cwd at training time)."""
+    p = Path(path)
+    for cand in ((p,) if p.is_absolute() else (p, _REPO / p, _REPO / "diffusion_policy" / p)):
+        if cand.is_file():
+            return cand
+    raise FileNotFoundError(f"split_file not found: {path}")
+
+
+def _replan_seed(episode_seed: int, t: int) -> int:
+    return int(np.random.SeedSequence([int(episode_seed), int(t)]).generate_state(1)[0])
+
+
+def _selection_generator(replan_seed: int) -> torch.Generator:
+    """CPU generator for the softmax pick, on its own stream so selection never shifts the
+    candidate noise."""
+    g = torch.Generator()
+    g.manual_seed(int(np.random.SeedSequence(
+        [int(replan_seed), _SEED_KEY_SELECT]).generate_state(1)[0]))
+    return g
+
+
+# Every environment variable that changes what this script measures, with the default the
+# code falls back to. This is the single place that enumerates them; `_write_run_config`
+# records the EFFECTIVE value of each one into the output dir so a result is traceable to
+# the configuration that produced it.
+#
+# These belong in a config file, not the environment -- a number produced here otherwise
+# depends on the shell it ran in, and nothing in the output says which. Recording them is
+# the first step; moving them into Hydra is tracked in diffusion_policy/AUDIT.md (P1-7).
+#
+# NOTE on `N_SAMPLES` (= N in best-of-N, the candidates drawn per control step). It is read
+# only on the BC branch, in an if/else on the verifier, so its default is verifier-dependent:
+# 16 for VERIFIER_TYPE=dqc, 128 otherwise. The non-DQC branch is `max(128, N_SAMPLES)` -- a
+# FLOOR, not a default -- so with the RoboMonkey/LLaVA verifier, N_SAMPLES=4 silently yields
+# 128 candidates. Currently latent (every small-N sweep sets VERIFIER_TYPE=dqc), but it would
+# silently flatten a BoN curve. The native search path takes N from --n-samples instead.
+EVAL_ENV_VARS = (
+    ("VERIFIER_TYPE", "robomonkey"),
+    ("VERIFIER_IMAGE_KEY", "agentview_image"),
+    ("VERIFIER_INSTRUCTION", "put the eggplant in the basket"),
+    ("DQC_CKPT_DIR", None),
+    ("DQC_VERIFIER_CKPT", None),
+    ("DQC_VERIFIER_EPOCH", "30000"),
+    ("DQC_CRITIC_MODULE", "chunk"),
+    ("DQC_TEXT_EMB", None),
+    ("N_SAMPLES", "(BC branch only; 16 if VERIFIER_TYPE=dqc, else floored at 128)"),
+    ("BC_SAMPLER", "ddim"),
+    ("BC_SAMPLER_STEPS", None),
+    ("BC_BATCH_CANDIDATES", "0"),
+    ("SOFTMAX_NORM", "none"),
+    ("BC_VERIFIER_SCORE", "chunk"),
+    ("BC_VERIFIER_AGG", "mean"),
+    ("BC_CHUNK_FROM_PRED", "0"),
+    ("BC_VERIFIER_STEP", "0"),
+    ("BC_VERIFIER_DISCOUNT", "0.98"),
+    ("EVAL_CHUNK_SELECT", "0"),
+    ("ROBOMONKEY_KV_PREFIX", "0"),
+    ("ROBOMONKEY_KV_CHUNK", "16"),
+    ("VERITAS_CAMERA_FILE", None),
+    ("VERITAS_PLAN_DIR", None),
+    ("VERITAS_ALLOW_LIVE", "0"),
+    ("VERITAS_PROMPT", "v1_upstream"),
+    ("VERITAS_ACTION_POS_SCALE", "null"),
+    ("VERITAS_LOOKAHEAD_K", "3"),
+    ("VERITAS_LOOKAHEAD_ALPHA", "0.5"),
+    ("VERITAS_HORIZON", None),
+    ("VERITAS_PLAN_DONE_MODE", "zero"),
+    ("BC_CANDIDATE_POOL", None),
+    ("BC_GRIPPER_AUG", None),
+    ("STRICT_TASK_WEIGHT", None),
+    ("FULL_FILTER_LOOKAHEAD", None),
+    ("SIM_LOOKAHEAD_MODE", None),
+    ("METRIC_PILOT_ROOT", None),
+    ("METRIC_TRACE_DIR", None),
+    ("METRIC_VERIFIER_REVISION", "v1"),
+    ("METRIC_CALIBRATION", None),
+    ("VERITAS_GRIPPER_WEIGHT", None),
+    ("SUBTASK_RECIPE", None),
+    ("BON_SCORE", "veritas"),
+    ("BON_TRACE_DIR", None),
+)
+
+
+def _build_veritas_verifier(existing=None, n_action_steps=None):
+    """VeritasPixelVerifier from the VERITAS_* environment (see EVAL_ENV_VARS)."""
+    from diffusion_policy.policy.veritas_verifier import VeritasPixelVerifier
+    # Preserve checkpoint normalization and other settings unless explicitly overridden.
+    keys = ('camera_file', 'action_pos_scale', 'lookahead_k', 'lookahead_alpha',
+            'default_tol_px', 'horizon', 'ee_key', 'targets_key', 'image_obs_key',
+            'normalize', 'value_mean', 'value_std', 'unprojectable_cost', 'plan_done_mode')
+    kwargs = {k: getattr(existing, k) for k in keys if hasattr(existing, k)}
+    if n_action_steps is not None:
+        kwargs['horizon'] = int(n_action_steps)
+    for env, key, cast in (
+            ('VERITAS_CAMERA_FILE', 'camera_file', str),
+            ('VERITAS_LOOKAHEAD_K', 'lookahead_k', int),
+            ('VERITAS_LOOKAHEAD_ALPHA', 'lookahead_alpha', float),
+            ('VERITAS_HORIZON', 'horizon', int),
+            ('VERITAS_PLAN_DONE_MODE', 'plan_done_mode', str)):
+        if os.environ.get(env):
+            kwargs[key] = cast(os.environ[env])
+    if 'VERITAS_ACTION_POS_SCALE' in os.environ:
+        scale = os.environ['VERITAS_ACTION_POS_SCALE'].strip()
+        kwargs['action_pos_scale'] = (None if scale.lower() in ('', 'null', 'none')
+                                      else json.loads(scale))
+    if os.environ.get('VERIFIER_TYPE') in ('veritas_pixel_gripper','veritas_subtask'):
+        from diffusion_policy.policy.veritas_gripper_verifier import VeritasGripperVerifier
+        return VeritasGripperVerifier(**kwargs,health_check=False,
+            gripper_weight=float(os.environ['VERITAS_GRIPPER_WEIGHT']),
+            task_weight=float(os.environ.get('STRICT_TASK_WEIGHT','0')))
+    if os.environ.get('VERITAS_STACK_POSITION') == '1' or type(existing).__name__ == 'VeritasStackPositionVerifier':
+        from diffusion_policy.policy.veritas_stack_position_verifier import VeritasStackPositionVerifier
+        for key in ('stack_weight','position_sigma','cube_height','grasp_radius','pixel_scale'):
+            if hasattr(existing,key):kwargs[key]=getattr(existing,key)
+        return VeritasStackPositionVerifier(**kwargs,health_check=False)
+    if os.environ.get('VERIFIER_TYPE') == 'veritas_metric':
+        from diffusion_policy.policy.veritas_metric_verifier import VeritasMetricVerifier
+        revision=os.environ.get('METRIC_VERIFIER_REVISION','v1')
+        calibration=None
+        if revision=='v2':
+            calibration=json.loads(Path(os.environ['METRIC_CALIBRATION']).read_text())
+            kwargs['action_pos_scale']=calibration['action_pos_scale']
+        return VeritasMetricVerifier(**kwargs, revision=revision, calibration=calibration, health_check=False)
+    return VeritasPixelVerifier(**kwargs, health_check=True)
+
+
+def _veritas_env_wrapper(task: str):
+    """A callable wrapping a SimplerEnv gym env in VeritasTrackerWrapper, planning from
+    the VERITAS_PLAN_DIR cache (live Gemini only with VERITAS_ALLOW_LIVE=1)."""
+    from diffusion_policy.env.simpler.veritas.camera import CameraModel
+    from diffusion_policy.env.simpler.veritas.tracker import VeritasTrackerWrapper
+    from diffusion_policy.veritas.plan_store import CachedPlanProvider
+    camera = CameraModel.load(os.environ["VERITAS_CAMERA_FILE"])
+    plan_dir = os.environ["VERITAS_PLAN_DIR"]
+    allow_live = os.environ.get("VERITAS_ALLOW_LIVE", "0") == "1"
+    planner = None
+    hint_provider = None
+    # VERITAS_HINTS: sim (object pixels from projected sim poses) | gsam2 (upstream: Gemini
+    # picks the objects, Grounded-SAM-2 localizes them, Gemini bboxes fill gaps; implies the
+    # exact upstream prompt formatting)
+    hints = os.environ.get("VERITAS_HINTS", "sim")
+    if hints not in ("sim", "gsam2"):
+        raise ValueError(f"VERITAS_HINTS={hints!r} (want sim|gsam2)")
+    if allow_live:
+        from diffusion_policy.env.simpler.veritas.simpler_client import (
+            SimplerVeritasClient, make_live_planner)
+        client = SimplerVeritasClient()
+        prompt = os.environ.get("VERITAS_PROMPT",
+                                "v1_upstream_exact" if hints == "gsam2" else "v1_upstream")
+        planner = make_live_planner(
+            client, prompt=prompt, log_dir=plan_dir, task=task,
+            camera_file=os.environ["VERITAS_CAMERA_FILE"], hint_mode=hints)
+        if hints == "gsam2":
+            from diffusion_policy.env.simpler.veritas.gsam.upstream_hints import \
+                UpstreamHintProvider
+            hint_provider = UpstreamHintProvider(client, log_dir=plan_dir)
+    elif hints == "gsam2":
+        raise ValueError("VERITAS_HINTS=gsam2 needs VERITAS_ALLOW_LIVE=1 (hints feed live planning)")
+    provider = CachedPlanProvider(plan_dir, planner=planner, allow_live=allow_live)
+    print(f"[eval] veritas object hints: {hints}")
+    return lambda env: VeritasTrackerWrapper(env, camera, provider, hint_provider=hint_provider)
+
+
+def _git_info(repo_root: Path) -> Dict[str, Any]:
+    """Commit sha + dirty flag for a repo, or an error string. Never raises."""
+    def _run(*cmd):
+        return subprocess.run(cmd, cwd=str(repo_root), capture_output=True,
+                              text=True, timeout=15).stdout.strip()
+    try:
+        return {
+            "sha": _run("git", "rev-parse", "HEAD"),
+            "branch": _run("git", "rev-parse", "--abbrev-ref", "HEAD"),
+            # a dirty tree means the sha does not identify the code that ran
+            "dirty": bool(_run("git", "status", "--porcelain")),
+        }
+    except Exception as e:  # missing git, not a repo, timeout
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _resume_identity(args: argparse.Namespace) -> Dict[str, Any]:
+    """What must match for a stored episode to be reused on resume."""
+    return {
+        "tiled_envs": int(os.environ.get("TILED_ENVS", "1")),
+        "obs_corruption": str(args.obs_corruption),
+        # absent from records written before the flag existed; None == clean there too
+        **({"eval_obs_noise_level": float(args.eval_obs_noise_level)}
+           if args.eval_obs_noise_level is not None else {}),
+        **({"veritas_hints": os.environ["VERITAS_HINTS"]}
+           if os.environ.get("VERITAS_HINTS", "sim") != "sim" else {}),
+        **({"metric_verifier_revision": os.environ['METRIC_VERIFIER_REVISION'],
+            "metric_calibration": os.environ.get('METRIC_CALIBRATION')}
+           if os.environ.get('METRIC_VERIFIER_REVISION','v1') != 'v1' else {}),
+        **({'pixel_gripper_version':'v1_normalized','gripper_weight':float(os.environ['VERITAS_GRIPPER_WEIGHT'])}
+           if os.environ.get('VERIFIER_TYPE')=='veritas_pixel_gripper' else {}),
+    }
+
+
+def _write_run_config(output_dir: Path, args: argparse.Namespace,
+                      extra: Optional[Dict[str, Any]] = None) -> Path:
+    """Record the full configuration of this evaluation next to its results.
+
+    Without this an eval result is not reproducible and not even interpretable: the
+    behaviour of this script is driven by ~20 environment variables (which verifier
+    checkpoint to load, how candidates are scored and selected, how many are drawn) that
+    are recorded nowhere, so two rows in the same results table can have been produced by
+    materially different procedures with nothing to distinguish them.
+
+    Writes ``<output_dir>/run_config.json``. Env vars are recorded as their EFFECTIVE
+    value together with whether it came from the environment or from the code default, so
+    the record is unambiguous either way.
+    """
+    ckpt = Path(args.checkpoint)
+    ckpt_info: Dict[str, Any] = {"path": str(ckpt)}
+    try:
+        st = ckpt.stat()
+        ckpt_info.update(size_bytes=st.st_size, mtime=int(st.st_mtime))
+        # cheap identity for the checkpoint: hashing multi-GB files every eval is not
+        # worth it, so fingerprint the head instead -- enough to catch "same path,
+        # different file" between runs.
+        with open(ckpt, "rb") as fh:
+            ckpt_info["head_md5"] = hashlib.md5(fh.read(1 << 20)).hexdigest()
+    except OSError as e:
+        ckpt_info["error"] = str(e)
+
+    env: Dict[str, Any] = {}
+    for name, default in EVAL_ENV_VARS:
+        raw = os.environ.get(name)
+        env[name] = {"value": raw if raw is not None else default,
+                     "source": "env" if raw is not None else "default"}
+
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = {
+        "script": str(Path(__file__).resolve()),
+        "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "argv": sys.argv,
+        "args": vars(args),
+        "checkpoint": ckpt_info,
+        "env": env,
+        "git": {"RoboMonkey": _git_info(repo_root),
+                "diffusion_policy": _git_info(repo_root / "diffusion_policy")},
+        "slurm": {k: v for k, v in os.environ.items() if k.startswith("SLURM_JOB")},
+        "host": platform.node(),
+        "python": sys.version.split()[0],
+        "torch": torch.__version__,
+        "numpy": np.__version__,
+        "cuda_device": (torch.cuda.get_device_name(0)
+                        if torch.cuda.is_available() else None),
+    }
+    if extra:
+        payload.update(extra)
+
+    path = output_dir / "run_config.json"
+    path.write_text(json.dumps(payload, indent=2, default=str))
+    print(f"[eval] wrote run config -> {path}")
+    return path
+
 
 @torch.no_grad()
+def _rescore_veritas_bon(pred, verifier, obs_dict, bon_score, sim_look, env_base, source_obj,
+                         step_obs, goal_d0, device, seed, t):
+    """Rescore the BC candidates for a BON_SCORE arm and reselect by argmax.
+
+    Pixel term: Veritas lookahead cost / 105 px, bounded to [0, 1) as c / (1 + c).
+    Distance term: ||source - target|| (world xyz) / d0, d0 = initial distance (>= 5 cm).
+    """
+    acts = torch.as_tensor(np.asarray(pred['candidate_actions']), device=device, dtype=torch.float32)
+    n = acts.shape[0]
+    rep = {k: v.expand(n, *v.shape[1:]) for k, v in obs_dict.items()}
+    tcp = torch.as_tensor(np.asarray(step_obs['end_effector_pose'])[:3], device=device, dtype=torch.float32)
+    src = np.asarray(step_obs['insertive_asset_pose'], dtype=np.float64)[:3]
+    tgt = np.asarray(step_obs['receptive_asset_pose'], dtype=np.float64)[:3]
+    sim = None
+    if sim_look is not None:
+        sim = sim_look.score(pred['candidate_actions'])
+        # Encode the simulated endpoint as one displacement so the Veritas cost reads it
+        # instead of the integrated action translation.
+        R, scale, _, _ = verifier._consts(acts)
+        endpoints = torch.tensor([x['eef_endpoint'] for x in sim], device=device, dtype=torch.float32)
+        scored = torch.zeros_like(acts)
+        scored[:, 0, :3] = ((endpoints - tcp) @ R) / scale
+    else:
+        scored = acts
+    with torch.no_grad():
+        pixel = verifier.cost(rep, scored) / 105.
+    pixel = (pixel / (1 + pixel)).cpu().numpy().astype(float)
+    dist = np.zeros(n)
+    if bon_score == 'sim_veritas_distance':
+        dist = np.array([np.linalg.norm(np.asarray(x['object_endpoint']) - tgt) for x in sim]) / goal_d0
+    elif bon_score == 'veritas_distance':
+        # Held source (grasped now, gripper closed over the whole chunk) follows the
+        # predicted end-effector displacement; otherwise it stays where it is.
+        ee_end = verifier.endpoints(rep, acts).cpu().numpy().astype(float)
+        held = bool(env_base.agent.check_grasp(source_obj))
+        closed = (np.asarray(pred['candidate_actions'])[:, :, 6] < .5).all(axis=1)
+        moved = ee_end - tcp.cpu().numpy()
+        src_end = src[None] + np.where((held & closed)[:, None], moved, 0.)
+        dist = np.linalg.norm(src_end - tgt[None], axis=1) / goal_d0
+    values = -pixel - dist
+    best = int(values.argmax())
+    pred = dict(pred, values=values.tolist(), selected_index=best, selected_value=float(values[best]),
+                chunk=acts[best][None])
+    trace_dir = os.environ.get('BON_TRACE_DIR')
+    if trace_dir:
+        row = dict(t=int(t), bon_score=bon_score, pixel=pixel.tolist(), distance=dist.tolist(),
+                   values=values.tolist(), selected_index=best)
+        if sim is not None:
+            row['sim_success'] = [bool(x.get('checks', {}).get('success', False)) for x in sim]
+            row['restore_error'] = sim_look.validation_errors[-1]
+        with (Path(trace_dir) / f'seed{seed}.jsonl').open('a') as f:
+            f.write(json.dumps(row) + '\n')
+    return pred
+
+
 def _search_policy_predict(
     policy,
     obs_dict: Dict[str, torch.Tensor],
@@ -51,15 +379,15 @@ def _search_policy_predict(
     viz_q: bool = False,
     n_samples: Optional[int] = None,
     softmax_temp: float = 1.0,
-    tcont: Optional[float] = None,
-    replan_seed: Optional[int] = None,
+    replan_seed: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """Run the search policy.
 
     Runs the search loop (``n_samples`` autoregressive candidate samples, each
-    verifier-scored), then selects ONE of those ``n_samples`` candidates. Two
+    verifier-scored), then selects ONE of those ``n_samples`` candidates. Three
     selection modes:
       * ``"argmax"``: pick the candidate with the highest verifier value.
+      * ``"final"``: pick the final candidate, preserving all earlier search feedback.
       * ``"softmax"``: sample an index from ``softmax(values / softmax_temp)``.
 
     ``n_samples`` is independent of ``policy.max_actions`` (the transformer's
@@ -74,9 +402,12 @@ def _search_policy_predict(
     # KEEP the image key — the verifier reads it directly.
     known = set(policy.normalizer.params_dict.keys())
     image_obs_key = getattr(policy.verifier, "image_obs_key", None)
+    # Pose-based verifiers (Veritas) read low-dim keys the policy may not normalize,
+    # plus the per-step waypoint targets the env wrapper injects.
+    verifier_keys = set(getattr(policy.verifier, "obs_keys", ()) or ())
     obs_dict = {
         k: v for k, v in obs_dict.items()
-        if k in known or k == image_obs_key
+        if k in known or k == image_obs_key or k in verifier_keys
     }
 
     To = int(policy.n_obs_steps)
@@ -102,49 +433,20 @@ def _search_policy_predict(
     if _kv:
         _verifier.set_kv_prefix(True)
         _verifier.clear_prefix_cache()
-    # tcont (noise level in [0,1]) only applies to the noise-conditioned (tmrl)
-    # policy, whose predict_n_actions takes a tcont_context kwarg. The
-    # tunable_corruption policies don't accept it, so pass only when supported.
-    import inspect as _inspect
+    # Per-env replan seeds (one per batch row). Policies with per-row streams draw every
+    # noise from them; the rest (Gaussian ST, BC wrapper) fall back to the global RNG
+    # seeded from row 0.
     _pred_kw: Dict[str, Any] = {}
-    if tcont is not None and "tcont_context" in _inspect.signature(
-        policy.predict_n_actions
-    ).parameters:
-        _pred_kw["tcont_context"] = float(tcont)
-    # Deterministic candidate sampling: seed the global RNG from a per-replan
-    # seed so the N diffusion candidate draws are reproducible run-to-run.
-    # Applied here, at the harness level, it governs every policy variant
-    # (tunable_corruption / noise-conditioned / BC) since they all draw their
-    # init noise from the default generator. The candidates stay diverse (N
-    # sequential draws from the seeded stream) and nested across N. The softmax
-    # selection below is intentionally left stochastic — see the restore call.
-    # replan_seed may be a scalar (seed the global RNG; env(s) share the stream and
-    # get row-position slices) OR a per-env list (tiled path with TILED_SEED_PER_ENV):
-    # in the latter case build per-env init noise anchored to each episode's OWN seed
-    # and inject it, so a candidate's noise no longer depends on its batch position or
-    # on other envs' done-timing. DDIM is deterministic, so the init noise fully
-    # determines the candidate -> this matches the single-env path per episode.
-    _per_env_seeds = None
-    if replan_seed is not None and isinstance(replan_seed, (list, tuple)):
-        _per_env_seeds = [int(s) for s in replan_seed]
-    _supports_noise = "noise_seq" in _inspect.signature(policy.predict_n_actions).parameters
-    if _per_env_seeds is not None and _supports_noise:
-        _dev = next(policy.parameters()).device
-        _H, _D = int(policy.horizon), int(policy.action_dim)
-        _noise_seq = torch.empty(n_samples, len(_per_env_seeds), _H, _D,
-                                 device=_dev, dtype=torch.float32)
-        for _k, _s in enumerate(_per_env_seeds):
-            _g = torch.Generator(device=_dev)
-            _g.manual_seed(int(_s) % (2 ** 63 - 1))
-            for _j in range(n_samples):
-                _noise_seq[_j, _k] = torch.randn(_H, _D, generator=_g,
-                                                 device=_dev, dtype=torch.float32)
-        _pred_kw["noise_seq"] = _noise_seq
+    _per_env_seeds = None if replan_seed is None else [int(x) for x in replan_seed]
+    _policy_seeded = (_per_env_seeds is not None
+                      and getattr(policy, "supports_sample_seeds", False))
+    if _policy_seeded:
+        policy.set_sample_seeds(_per_env_seeds)
     elif _per_env_seeds is not None:
-        # policy without noise_seq support: fall back to a shared scalar seed.
-        torch.manual_seed(int(_per_env_seeds[0]))
-    elif replan_seed is not None:
-        torch.manual_seed(int(replan_seed))
+        torch.manual_seed(_per_env_seeds[0])
+    if getattr(policy, "eval_obs_noise_level", None) is not None:
+        # BC wrapper's eval-only state noise: its own stream keyed on the replan seed
+        _pred_kw["obs_noise_seed"] = None if _per_env_seeds is None else _per_env_seeds[0]
     # Stratified-random candidate augmentation (RAND_AUG_K>0): append a pool of
     # deliberately diverse actions covering the whole translation-direction
     # sphere, scored by the SAME verifier, so the selection below ranks the
@@ -167,9 +469,19 @@ def _search_policy_predict(
                 verifier=_verifier,
             )
     finally:
+        if _policy_seeded:
+            policy.set_sample_seeds(None)
         if _kv:
             _verifier.set_kv_prefix(False)
             _verifier.clear_prefix_cache()
+    if _os.environ.get("BC_GRIPPER_AUG", "0") == "1":
+        if type(policy).__name__ != "BCSearchWrapper" or To != 1 or _aug.enabled:
+            raise ValueError("gripper diagnostic requires BC, one observation, and no random augmentation")
+        from diffusion_policy.policy.gripper_candidate_aug import augment_gripper_candidates
+        actions=augment_gripper_candidates(actions)
+        assert actions.shape[0]==1
+        rep={k:v.expand(actions.shape[1],*v.shape[1:]) for k,v in obs_dict.items()}
+        values=_verifier.get_value(rep,actions[0]).unsqueeze(0)
     B = actions.shape[0]
     start = To - 1
     end = start + n_action_steps
@@ -212,6 +524,7 @@ def _search_policy_predict(
         out["n_random"] = int(actions.shape[1]) - int(_n_policy)
 
     if viz_q:
+        out['candidate_actions_full'] = actions[0].detach().cpu().float().numpy()
         # All K candidate chunks, sliced to the executed action window so they
         # are directly comparable to the chosen chunk (mirrors BoN viz_q).
         out["candidate_actions"] = (
@@ -228,8 +541,9 @@ def _search_policy_predict(
             o["random_won_all"] = [bool(x) for x in won.detach().cpu().tolist()]
         return o
 
-    if mode == "argmax":
-        best = values.argmax(dim=1)  # (B,)
+    if mode in ("argmax", "final"):
+        best = (values.argmax(dim=1) if mode == "argmax" else
+                torch.full((B,), actions.shape[1] - 1, device=actions.device, dtype=torch.long))
         best_action = actions[torch.arange(B, device=actions.device), best]  # (B, horizon, action_dim)
         out["chunk"] = best_action[:, start:end]
         out["selected_index"] = int(best[0].item())
@@ -240,38 +554,36 @@ def _search_policy_predict(
         # Sample a candidate index from softmax(values / temp). temp -> 0 is
         # argmax, temp -> inf is uniform. Default temp=1.0.
         T = max(float(softmax_temp), 1e-6)
-        probs = torch.softmax(values / T, dim=1)  # (B, K)
-        # SEED the stochastic selection so the softmax pick is reproducible
-        # run-to-run, using a dedicated RNG stream derived from replan_seed
-        # (distinct from the candidate-generation seed applied above). Previously
-        # this reseeded the global RNG from OS entropy (torch.seed()), which made
-        # the selection — and hence the entire rollout — non-reproducible across
-        # runs even with identical env + candidate seeds (see the 120-vs-500
-        # divergence analysis: same candidate set at t=0, different pick). Set
-        # SOFTMAX_SELECT_UNSEEDED=1 to restore the old entropy-seeded behavior.
-        if _per_env_seeds is not None and _os.environ.get("SOFTMAX_SELECT_UNSEEDED", "0") != "1":
-            # Per-env selection RNG, anchored to each episode's own seed — so the
-            # softmax pick (like the candidate noise) is reproducible and NOT
-            # correlated across envs / shifted by done-timing in a tiled batch.
-            sampled = torch.empty(probs.shape[0], dtype=torch.long, device=probs.device)
-            for _k in range(probs.shape[0]):
-                _sg = torch.Generator(device=probs.device)
-                _sg.manual_seed((int(_per_env_seeds[_k]) + 999331) % (2 ** 31 - 1))
-                sampled[_k] = torch.multinomial(probs[_k:_k + 1], num_samples=1,
-                                                generator=_sg).squeeze(1)
-        elif replan_seed is not None and _os.environ.get("SOFTMAX_SELECT_UNSEEDED", "0") != "1":
-            _sel_g = torch.Generator(device=probs.device)
-            _sel_g.manual_seed((int(replan_seed) + 999331) % (2 ** 31 - 1))
-            sampled = torch.multinomial(probs, num_samples=1, generator=_sel_g).squeeze(1)  # (B,)
+        # SOFTMAX_NORM=zscore standardizes the K values within each replan (per row)
+        # before the temperature, so T is scale-free across verifiers, tasks and plans.
+        # A row whose values are all equal becomes uniform (std floored).
+        _norm = _os.environ.get("SOFTMAX_NORM", "none").lower()
+        if _norm == "zscore":
+            _v = values.float()
+            logits = (_v - _v.mean(dim=1, keepdim=True)) / _v.std(
+                dim=1, unbiased=False, keepdim=True).clamp_min(1e-8)
+        elif _norm == "none":
+            logits = values
         else:
-            if replan_seed is not None:
-                torch.seed()
-            sampled = torch.multinomial(probs, num_samples=1).squeeze(1)  # (B,)
+            raise ValueError(f"SOFTMAX_NORM must be none|zscore, got {_norm!r}")
+        probs = torch.softmax(logits / T, dim=1)  # (B, K)
+        # Seeded per env from its own replan seed (own CPU stream), so the pick is
+        # reproducible and independent of batch position.
+        _probs_cpu = probs.detach().float().cpu()
+        if _per_env_seeds is not None:
+            sampled = torch.stack([
+                torch.multinomial(_probs_cpu[_k:_k + 1], num_samples=1,
+                                  generator=_selection_generator(_per_env_seeds[_k])).squeeze(1)[0]
+                for _k in range(_probs_cpu.shape[0])])
+        else:
+            sampled = torch.multinomial(_probs_cpu, num_samples=1).squeeze(1)  # (B,)
+        sampled = sampled.to(actions.device)
         chosen_action = actions[torch.arange(B, device=actions.device), sampled]
         out["chunk"] = chosen_action[:, start:end]
         out["selected_index"] = int(sampled[0].item())
         out["selected_value"] = float(values[0, int(sampled[0].item())].item())
         out["softmax_temp"] = float(T)
+        out["softmax_norm"] = _norm
         return _mark_random(out, sampled)
 
     raise ValueError(
@@ -285,10 +597,7 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
                     mode: str = "argmax",
                     viz_q: bool = False,
                     n_samples: Optional[int] = None,
-                    softmax_temp: float = 1.0,
-                    tcont: Optional[float] = None,
-                    deterministic_sampling: bool = True,
-                    sample_seed_base: int = 0) -> Dict[str, Any]:
+                    softmax_temp: float = 1.0) -> Dict[str, Any]:
     n_obs_steps = int(cfg.n_obs_steps)
     n_action_steps = int(cfg.n_action_steps)
 
@@ -305,6 +614,24 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
             f"got {source_obj=}, {target_obj=}, {tcp_link=}"
         )
 
+    full_filter=None
+    if os.environ.get('FULL_FILTER_LOOKAHEAD')=='1':
+        from full_filter_lookahead import FullFilterLookahead
+        full_filter=FullFilterLookahead(env_base,source_obj,target_obj,convert_maniskill,seed)
+    # BON_SCORE: Veritas BoN arms that rescore the BC candidates.
+    #   veritas_distance      -bounded pixel cost - predicted ||src-tgt||/d0 (held source follows the gripper)
+    #   sim_veritas           -bounded pixel cost of the simulated (cloned-scene) endpoint
+    #   sim_veritas_distance  sim_veritas - simulated ||src-tgt||/d0
+    # Unset / 'veritas' keeps the verifier's own argmax.
+    bon_score = os.environ.get('BON_SCORE', 'veritas') or 'veritas'
+    if bon_score not in ('veritas', 'veritas_distance', 'sim_veritas', 'sim_veritas_distance'):
+        raise ValueError(f'BON_SCORE={bon_score!r}')
+    sim_look = None
+    if bon_score.startswith('sim_'):
+        from full_filter_lookahead import FullFilterLookahead
+        sim_look = FullFilterLookahead(env_base, source_obj, target_obj, convert_maniskill, seed,
+                                       task=os.environ['TASK'])
+    goal_d0 = None
     prev_arm_action = np.zeros(6, dtype=np.float32)
     prev_gripper_action = np.zeros(1, dtype=np.float32)
     window = ObsWindow(n_obs_steps=n_obs_steps)
@@ -350,8 +677,45 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
         get_image_from_maniskill2_obs_dict,
     )
 
+    metric_tracker = None
+    metric_provider = None
+    pixel_gripper = type(policy.verifier).__name__ == 'VeritasGripperVerifier'
+    subtask_mode = os.environ.get('VERIFIER_TYPE') == 'veritas_subtask'
+    if subtask_mode:
+        from diffusion_policy.env.simpler.veritas.subtask_controller import SubtaskController
+        policy.verifier.camera.assert_matches(obs)
+        if os.environ.get('SUBTASK_RECIPE')=='two_physical_v2':
+            from diffusion_policy.env.simpler.veritas.subtask_two_controller import TwoSubtaskController
+            SubtaskController=TwoSubtaskController
+        metric_tracker=SubtaskController(os.environ['METRIC_PILOT_ROOT'],os.environ['METRIC_TRACE_DIR'],seed,instruction,policy.verifier.camera)
+        if 'eggplant' in instruction.lower():
+            from diffusion_policy.env.simpler.veritas.subtask_eggplant_controller import EggplantSubtaskController,BasketPositionChecks
+            metric_tracker=EggplantSubtaskController(os.environ['METRIC_PILOT_ROOT'],os.environ['METRIC_TRACE_DIR'],seed,instruction,policy.verifier.camera)
+            metric_tracker.checks=BasketPositionChecks(env_base.episode_source_obj_bbox_world,env_base.episode_target_obj_bbox_world)
+        (Path(os.environ['METRIC_TRACE_DIR'])/f'seed{seed}.jsonl').write_text('')
+    if pixel_gripper and not subtask_mode:
+        from diffusion_policy.env.simpler.veritas.pixel_gripper_plan import PixelGripperPlanProvider
+        from diffusion_policy.policy.veritas_gripper_verifier import PixelGripperTracker
+        from diffusion_policy.env.simpler.veritas.hints import object_hints
+        policy.verifier.camera.assert_matches(obs)
+        metric_provider=PixelGripperPlanProvider(os.environ['METRIC_PILOT_ROOT'],instruction,
+                                               os.environ['METRIC_TRACE_DIR'])
+        if os.environ.get('SIM_LOOKAHEAD_MODE') in ('trajectory_distance','trajectory_full_filter'):
+            metric_provider.budget_group='simple_sim_distance_eggplant_20261004'
+            metric_provider.group_cap_usd=10.
+        metric_provider.context='Native-pixel spatial hints: '+json.dumps(
+            dict(eef=policy.verifier.camera.project(np.asarray(obs['extra']['tcp_pose'])[:3]).tolist(),
+                 objects=object_hints(env_base,policy.verifier.camera)))
+    if type(policy.verifier).__name__ == 'VeritasMetricVerifier':
+        from diffusion_policy.env.simpler.veritas.metric_plan import PlanProvider
+        from diffusion_policy.policy.veritas_metric_verifier import MetricTracker
+        policy.verifier.camera.assert_matches(obs)
+        metric_provider = PlanProvider(os.environ['METRIC_PILOT_ROOT'], instruction,
+                                       os.environ['METRIC_TRACE_DIR'])
     init_state = None   # captured at the first step: asset + arm start poses
     obj_goal_dist = float("nan")       # source-object -> target distance, latest step
+    strict_first_grasp_distance = None
+    strict_basket_arrived = False
     obj_goal_dist_min = float("inf")   # closest the object ever got to the goal
     while t < max_steps:
         step_obs = build_obs_step(
@@ -361,6 +725,8 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
             source_obj=source_obj, target_obj=target_obj, tcp_link=tcp_link,
         )
         window.push(step_obs)
+        if full_filter is not None:
+            full_filter.observe(bool(prev_gripper_action[0]>=.5) if t else True,success)
         # object -> goal distance (eggplant->basket, cube->cube, spoon->towel):
         # ||insertive_asset - receptive_asset|| in world xyz, tracked each step.
         _src = step_obs.get("insertive_asset_pose", None)
@@ -369,6 +735,8 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
             obj_goal_dist = float(np.linalg.norm(
                 np.asarray(_src, dtype=np.float32)[:3] - np.asarray(_tgt, dtype=np.float32)[:3]))
             obj_goal_dist_min = min(obj_goal_dist_min, obj_goal_dist)
+            if goal_d0 is None:
+                goal_d0 = max(obj_goal_dist, .05)
         if init_state is None:
             init_state = {}
             for _name, _key in (("insertive_xyz", "insertive_asset_pose"),
@@ -392,8 +760,57 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
         except Exception as e:
             raise RuntimeError(f"failed to capture verifier image: {e!r}") from e
 
+        metric_state = None
+        if subtask_mode:
+            metric_state=metric_tracker.observe(current_frame,t,step_obs['end_effector_pose'],
+                step_obs['insertive_asset_pose'],step_obs['receptive_asset_pose'],
+                bool(prev_gripper_action[0]>=.5) if t else True,can_request=not pending_actions)
+            if getattr(policy.verifier,'task_weight',0):
+                contact=bool(env_base.agent.check_grasp(source_obj))
+                c=metric_tracker.metrics['position_checks']
+                if contact and strict_first_grasp_distance is None:
+                    strict_first_grasp_distance=c['tcp_source_distance_m']
+                strict_basket_arrived |= bool(c['basket_center_inside'] and c['basket_height_valid'])
+                metric_tracker.metrics['strict_grasp_contact']=contact
+                metric_tracker.metrics['strict_first_grasp_distance']=strict_first_grasp_distance
+                metric_tracker.metrics['strict_basket_arrived']=strict_basket_arrived
+                strict_log=dict(t=t,contact=contact,gripper_open=c['gripper_open'],
+                    gripper_object_distance=c['tcp_source_distance_m'],object_target_distance=c['source_target_distance_m'],
+                    grasp_reference_distance=strict_first_grasp_distance,basket_arrived=strict_basket_arrived)
+                with (Path(os.environ['METRIC_TRACE_DIR'])/f'seed{seed}_strict_metric_steps.jsonl').open('w' if t==0 else 'a') as f:
+                    f.write(json.dumps(strict_log)+'\n')
+            if metric_tracker.complete or metric_tracker.budget_exhausted:break
+        if metric_provider is not None:
+            if metric_tracker is None:
+                plan=metric_provider.get(seed,current_frame,instruction)
+                if pixel_gripper:
+                    metric_tracker=PixelGripperTracker(plan,policy.verifier.camera,step_obs['end_effector_pose'][:3])
+                else:
+                    metric_tracker = MetricTracker(plan,
+                        revision=policy.verifier.revision, calibration=policy.verifier.calibration)
+                # A retry/resume starts a new actual rollout; do not append its
+                # traces to a previously interrupted rollout of the same seed.
+                (Path(os.environ['METRIC_TRACE_DIR'])/f'seed{seed}.jsonl').write_text('')
+            # Use gripper proprioception after reset, then the executed gripper command.
+            # Possession additionally needs observed object lift and co-motion.
+            opened = bool(prev_gripper_action[0] >= .5) if t else True
+            metric_state = metric_tracker.update(step_obs['end_effector_pose'],
+                step_obs['insertive_asset_pose'], step_obs['receptive_asset_pose'], opened)
         if not pending_actions:
             obs_dict = window.to_tensor_dict(device=device)
+            if getattr(policy.verifier,'task_weight',0):
+                if not subtask_mode or 'eggplant' not in instruction.lower():raise ValueError('strict metric requires eggplant subtask controller')
+                c=metric_tracker.metrics['position_checks']
+                d0=float(np.linalg.norm(np.asarray(init_state['ee_xyz'])-np.asarray(init_state['insertive_xyz'])))
+                task_state=np.r_[step_obs['insertive_asset_pose'][:3],step_obs['receptive_asset_pose'][:3],float(contact),d0,strict_first_grasp_distance or 0.,float(strict_basket_arrived),float(strict_first_grasp_distance is not None)]
+                obs_dict['strict_task_state']=torch.as_tensor(task_state,dtype=torch.float32,device=device)[None,None]
+            if metric_state is not None:
+                if pixel_gripper:
+                    obs_dict['veritas_targets']=torch.as_tensor(metric_state[:8],device=device)[None,None]
+                    obs_dict['veritas_gripper_targets']=torch.as_tensor(metric_state[8:],device=device)[None,None]
+                else:
+                    obs_dict['veritas_metrics'] = torch.as_tensor(metric_state,device=device)[None,None]
+
             # Verifier expects (B, To, H, W, 3). Repeat the current frame
             # across the obs window (only the last step is read by the
             # verifier anyway).
@@ -402,19 +819,66 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
             obs_dict["agentview_image"] = img_t.unsqueeze(0).unsqueeze(0).expand(
                 1, n_obs_steps, *current_frame.shape
             )
-            # Per-replan deterministic seed = f(episode seed, t). Unique per
-            # (episode, replan step) and stable across runs, so the candidate
-            # set at each replan is reproducible. None -> stochastic (legacy).
-            replan_seed = (
-                (int(seed) * 1_000_003 + int(t) + int(sample_seed_base))
-                % (2 ** 31 - 1)
-                if deterministic_sampling else None
-            )
+            if hasattr(env, "targets_vector"):
+                # Veritas: the live tracker's upcoming waypoints, advanced on executed
+                # steps only (VeritasTrackerWrapper), repeated over the obs window.
+                _tv = torch.from_numpy(np.asarray(env.targets_vector(), dtype=np.float32))
+                obs_dict["veritas_targets"] = _tv.to(device=device)[None, None].expand(
+                    1, n_obs_steps, _tv.shape[0])
+            # One-row per-env list, same formula as the tiled path, so TILED_ENVS=1 and >1
+            # draw the same candidates for an episode.
             pred = _search_policy_predict(
-                policy, obs_dict, mode=mode, viz_q=viz_q,
+                policy, obs_dict, mode=mode, viz_q=(viz_q or metric_tracker is not None or bon_score != 'veritas'),
                 n_samples=n_samples, softmax_temp=softmax_temp,
-                tcont=tcont, replan_seed=replan_seed,
+                replan_seed=[_replan_seed(seed, t)],
             )
+            full_results=None
+            if bon_score != 'veritas' and n_samples > 1:
+                pred = _rescore_veritas_bon(pred, policy.verifier, obs_dict,
+                                            bon_score, sim_look, env_base, source_obj, step_obs,
+                                            goal_d0, device, seed, t)
+            if full_filter is not None:
+                full_results=full_filter.score(pred['candidate_actions'])
+                trajectory=np.asarray(pred['values'],dtype=float)
+                if os.environ.get('SIM_LOOKAHEAD_MODE') in ('trajectory_distance','trajectory_full_filter'):
+                    # Encode actual simulated endpoint as a single displacement;
+                    # reuse the exact Veritas pixel cost, without action integration error.
+                    endpoints=torch.tensor([x['eef_endpoint'] for x in full_results],device=device,dtype=torch.float32)
+                    R,scale,_,_=policy.verifier._consts(endpoints)
+                    synthetic=torch.zeros((len(full_results),8,7),device=device)
+                    tcp=torch.as_tensor(step_obs['end_effector_pose'][:3],device=device)
+                    synthetic[:,0,:3]=((endpoints-tcp)@R)/scale
+                    rep={k:v.expand(len(full_results),*v.shape[1:]) for k,v in obs_dict.items()}
+                    trajectory=policy.verifier.get_value(rep,synthetic).detach().cpu().numpy()
+                    if os.environ.get('SIM_LOOKAHEAD_MODE')=='trajectory_full_filter':
+                        task_values=np.array([x['score'] for x in full_results])
+                    else:
+                        d0=max(full_filter.history[0]['deb'],.05)
+                        task_values=-np.array([x['final_distance'] for x in full_results])/d0
+                        for x,q in zip(full_results,task_values):x['distance_score']=float(q)
+                    values=trajectory+task_values
+                else:
+                    values=trajectory+np.array([x['score'] for x in full_results])
+                best=int(values.argmax())
+                pred.update(values=values.tolist(),selected_index=best,selected_value=float(values[best]),
+                    chunk=torch.as_tensor(pred['candidate_actions'][best],device=device)[None])
+                metric_tracker.metrics['full_filter_selected']=full_results[best]
+                metric_tracker.metrics['full_filter_restore_error']=full_filter.validation_errors[-1]
+                with (Path(os.environ['METRIC_TRACE_DIR'])/f'seed{seed}_full_filter.jsonl').open('w' if t==0 else 'a') as f:
+                    f.write(json.dumps(dict(t=t,trajectory_values=trajectory.tolist(),combined_values=values.tolist(),selected_index=best,candidates=full_results))+'\n')
+            if metric_tracker is not None:
+                acts = torch.as_tensor(pred['candidate_actions'],device=device)
+                repeated = {k:v.expand(len(acts), *v.shape[1:]) for k,v in obs_dict.items()}
+                components = {k:v.detach().cpu().tolist() for k,v in
+                              policy.verifier.components(repeated,acts).items()}
+                trace = dict(seed=int(seed), t=int(t), metrics=metric_tracker.metrics,
+                    tcp_xyz=step_obs["end_effector_pose"][:3].tolist(),
+                    source_xyz=step_obs["insertive_asset_pose"][:3].tolist(),
+                    target_xyz=step_obs["receptive_asset_pose"][:3].tolist(),
+                    state=metric_state.tolist(), actions=pred['candidate_actions'].tolist(),
+                    selected_index=pred['selected_index'], values=pred['values'], components=components)
+                with (Path(os.environ['METRIC_TRACE_DIR']) / f'seed{seed}.jsonl').open('a') as f:
+                    f.write(json.dumps(trace)+'\n')
             chunk = pred["chunk"][0].detach().cpu().numpy()
             if branches is not None and current_frame is not None:
                 # Current EE world-frame xyz (start of every candidate's traj).
@@ -424,6 +888,9 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
                     tcp_world = np.zeros(3, dtype=np.float32)
                 branches.append({
                     "t": int(t),
+                    "policy_obs": {k: v.detach().cpu().numpy() for k, v in obs_dict.items()
+                                   if v.ndim <= 3},
+                    "candidate_actions_full": pred['candidate_actions_full'],
                     "candidate_actions": pred["candidate_actions"].astype(
                         np.float32, copy=True
                     ),
@@ -474,16 +941,26 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
         step_log.append(step_entry)
         if bool(done):
             success = True
-            break
+            if not subtask_mode and full_filter is None:break
         if bool(trunc):
             truncated = True
             break
         t += 1
 
+    if sim_look is not None:
+        sim_look.close()
+    if full_filter is not None:
+        from full_filter_lookahead import evaluate_filter
+        full_filter.observe(bool(prev_gripper_action[0]>=.5),success)
+        report=dict(history=full_filter.history,filter=evaluate_filter(full_filter.history),restoration_errors=full_filter.validation_errors,score_variation=full_filter.score_variation)
+        (Path(os.environ['METRIC_TRACE_DIR'])/f'seed{seed}_full_filter_outcome.json').write_text(json.dumps(report,indent=2))
+        full_filter.close()
     return {
         "success": bool(success),
+        "success_while_grasped": bool(success and info.get("is_src_obj_grasped", False)),
         "truncated": bool(truncated),
-        "num_steps": int(t + 1 if (success or truncated) else t),
+        "num_steps": len(step_log),
+        "subtasks": metric_tracker.metrics if subtask_mode else None,
         "obj_goal_dist_final": obj_goal_dist,
         "obj_goal_dist_min": (None if obj_goal_dist_min == float("inf") else obj_goal_dist_min),
         "steps": step_log,
@@ -493,6 +970,7 @@ def rollout_episode(env, policy, cfg, device: torch.device, seed: int,
         "cam_T_wc": cam_T_wc,
         "base_pose_world": base_pose_world,
         "init_state": init_state,
+        "veritas": (env.tracker_status() if hasattr(env, "tracker_status") else None),
     }
 
 
@@ -515,8 +993,7 @@ def _override_env_timelimit(env, max_steps):
 
 
 def rollout_episodes_tiled(envs, policy, cfg, device, seeds, max_steps, instruction,
-                           mode="softmax", n_samples=8, softmax_temp=1.0, tcont=None,
-                           deterministic_sampling=True, sample_seed_base=0):
+                           mode="softmax", n_samples=8, softmax_temp=1.0):
     """Vectorized rollout: run len(envs) episodes in LOCKSTEP, batching the policy +
     verifier over the env dimension (B = #active envs) at each replan. Handles variable
     episode length via a per-env done mask (finished envs are frozen, not stepped).
@@ -526,14 +1003,6 @@ def rollout_episodes_tiled(envs, policy, cfg, device, seeds, max_steps, instruct
         get_image_from_maniskill2_obs_dict,
     )
     N = len(envs)
-    import os as _os_pe
-    # TILED_SEED_PER_ENV=1 (default) anchors each env's candidate noise to its own
-    # episode seed — reproducible + decorrelated regardless of done-timing, and
-    # identical to the single-env path's formula. The legacy alternative
-    # (TILED_SEED_PER_ENV=0) uses a shared per-step seed that DROPS the episode
-    # seed, so candidate noise correlates across envs and shifts whenever
-    # done-timing changes the batch composition. Set 0 only to reproduce old runs.
-    _tiled_per_env_seed = _os_pe.environ.get("TILED_SEED_PER_ENV", "1") == "1"
     n_obs_steps = int(cfg.n_obs_steps); n_action_steps = int(cfg.n_action_steps)
     st = [dict(done=False, success=False, truncated=False, num_steps=0, dmin=float("inf"),
                pending=[], prev_arm=np.zeros(6, np.float32), prev_grip=np.zeros(1, np.float32))
@@ -573,22 +1042,16 @@ def rollout_episodes_tiled(envs, policy, cfg, device, seeds, max_steps, instruct
             imgs = torch.stack([torch.from_numpy(frames[k]).to(device=device) for k in need], dim=0)
             batch["agentview_image"] = imgs.unsqueeze(1).expand(
                 len(need), n_obs_steps, *frames[need[0]].shape)
-            if not deterministic_sampling:
-                replan_seed = None
-            elif _tiled_per_env_seed:
-                # Per-env candidate seed = f(episode seed, t) — identical formula to
-                # the single-env path — so each active env's candidate noise is anchored
-                # to its OWN episode seed, independent of its batch position / other
-                # envs' done-timing. Aligned with the `need` order = the batch rows.
-                replan_seed = [((int(seeds[k]) * 1_000_003 + int(t) + int(sample_seed_base))
-                                % (2 ** 31 - 1)) for k in need]
-            else:
-                # legacy: shared per-step seed (drops the episode seed -> candidate noise
-                # correlates across envs and shifts when done-timing changes the batch).
-                replan_seed = ((t + int(sample_seed_base)) * 1_000_003) % (2 ** 31 - 1)
+            if all(hasattr(envs[k], "targets_vector") for k in need):
+                _tv = torch.from_numpy(np.stack(
+                    [np.asarray(envs[k].targets_vector(), dtype=np.float32) for k in need]))
+                batch["veritas_targets"] = _tv.to(device=device)[:, None].expand(
+                    len(need), n_obs_steps, _tv.shape[1])
+            # Per-env seed = f(episode seed, t), aligned with `need` = the batch rows, so a
+            # row's candidates do not depend on batch position or other envs' done-timing.
             pred = _search_policy_predict(policy, batch, mode=mode, viz_q=False,
                                           n_samples=n_samples, softmax_temp=softmax_temp,
-                                          tcont=tcont, replan_seed=replan_seed)
+                                          replan_seed=[_replan_seed(seeds[k], t) for k in need])
             chunks = pred["chunk"].detach().cpu().numpy()   # (len(need), n_action_steps, 7)
             _rw = pred.get("random_won_all")
             for bi, k in enumerate(need):
@@ -613,15 +1076,86 @@ def rollout_episodes_tiled(envs, policy, cfg, device, seeds, max_steps, instruct
                  obj_goal_dist_final=(None if st[k]["dmin"] == float("inf") else st[k]["dmin"]),
                  obj_goal_dist_min=(None if st[k]["dmin"] == float("inf") else st[k]["dmin"]),
                  n_replans=st[k].get("n_replans"), n_rand_won=st[k].get("n_rand_won"),
+                 veritas=(envs[k].tracker_status() if hasattr(envs[k], "tracker_status") else None),
                  branches=None, frames=[], steps=[], init_state=None) for k in range(N)]
+
+
+def _select_episode_seeds(args, cfg):
+    """(seeds, seed -> raw-shard coordinates, split_info, checkpoint dataset_provenance)."""
+    # Episode seeds: the split manifest (or an explicit list). Each seed reproduces one
+    # demo's start state, so the same split is comparable across every checkpoint / N.
+    # The checkpoint carries the split it trained on (dataset_provenance, stamped by the
+    # training workspace); that manifest is the default, and its train seeds are what
+    # test seeds must be disjoint from. Seeds, not episode indices: the manifests were
+    # remapped onto the split-only datasets, which renumbered episodes but kept seeds.
+    from omegaconf import OmegaConf as _OCp
+    train_prov = cfg.get("dataset_provenance", None)
+    if train_prov is not None:
+        train_prov = _OCp.to_container(train_prov, resolve=True)
+    ckpt_split_file = _OCp.select(cfg, "task.dataset.split_file", default=None)
+    ckpt_split = (train_prov or {}).get("split_manifest")
+    split_info: Dict[str, Any] = {"split": None}
+    seed_src: Dict[int, Dict[str, Any]] = {}
+    if args.seeds:
+        explicit_seeds: List[int] = [int(s) for s in args.seeds.split(",") if s.strip()]
+        split_info["split"] = "explicit"
+    else:
+        _sf = args.split_file or (ckpt_split or {}).get("path") or ckpt_split_file
+        if _sf is None:
+            raise ValueError(
+                "no split manifest: the checkpoint has no task.dataset.split_file. Pass "
+                "--split-file diffusion_policy/diffusion_policy/config/splits/simpler/<task>/"
+                "<rule>_train<N>.json, or --seeds (the archived sub50 demo sets: --seeds "
+                "$(jq -r '[.episodes[].seed]|join(\",\")' "
+                "scriptsv2/eval_search/demoseeds/<task>_test.json)).")
+        _sm = load_split_file(_resolve_split_file(_sf))
+        explicit_seeds = list(_sm["seeds"][args.split])
+        seed_src = {int(r["seed"]): {"src_shard": r.get("src_shard"),
+                                     "src_episode": r.get("src_episode")}
+                    for r in (_sm["episodes"][str(i)] for i in _sm[args.split])}
+        split_info = {"split": args.split, "manifest": _sm["path"], "manifest_md5": _sm["md5"],
+                      "checksum": _sm.get("checksum"), "dataset_dir": _sm.get("dataset_dir"),
+                      "zarr": _sm.get("zarr_path"),
+                      "rule": (_sm.get("derivation") or {}).get("rule"),
+                      "episode_indices": [int(i) for i in _sm[args.split]],
+                      "is_ckpt_split": args.split_file is None}
+    if args.num_episodes is not None:
+        explicit_seeds = explicit_seeds[:int(args.num_episodes)]
+    split_info["seeds"] = list(explicit_seeds)
+    # The checkpoint's training seeds: stamped > its split_file read now > (pre-manifest
+    # checkpoints) the demoseeds train set matched to its dataset_dir.
+    train_seeds, train_src = set(), None
+    if ckpt_split is not None:
+        train_seeds, train_src = set(ckpt_split["train"]["seeds"]), "stamped"
+    elif ckpt_split_file is not None:
+        train_seeds = set(load_split_file(_resolve_split_file(ckpt_split_file))["seeds"]["train"])
+        train_src = "ckpt split_file"
+    elif train_prov is not None and train_prov.get("train_split") is not None:
+        train_seeds, train_src = set(int(x) for x in train_prov["train_split"]["seeds"]), "demoseeds"
+    overlap = sorted(train_seeds & set(explicit_seeds))
+    split_info["ckpt_train_seeds_source"] = train_src
+    split_info["overlap_with_ckpt_train_seeds"] = overlap
+    if split_info["split"] == "test" and overlap:
+        raise ValueError(f"--split test but {len(overlap)} seed(s) are in the checkpoint's "
+                         f"training demos: {overlap[:10]}")
+    return explicit_seeds, seed_src, split_info, train_prov
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--num-episodes", type=int, default=100)
-    parser.add_argument("--start-seed", type=int, default=1000)
-    parser.add_argument("--seeds", type=str, default=None)
+    parser.add_argument("--split-file", type=str, default=None,
+                        help="Split manifest (diffusion_policy/config/splits/simpler/<task>/"
+                             "<rule>_train<N>.json) whose --split episodes are rolled out from "
+                             "their seeds. Default: the checkpoint's own "
+                             "task.dataset.split_file, so test is its held-out set.")
+    parser.add_argument("--split", "--split-name", dest="split",
+                        choices=["test", "val", "train"], default="test",
+                        help="Which list of the split manifest to roll out.")
+    parser.add_argument("--seeds", type=str, default=None,
+                        help="Explicit comma-separated env seeds; overrides the manifest.")
+    parser.add_argument("--num-episodes", type=int, default=None,
+                        help="Cap: first K seeds of the split (default all).")
     parser.add_argument("--max-steps", type=int, default=120)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--output-dir", default=None)
@@ -629,11 +1163,7 @@ def main() -> None:
     parser.add_argument("--task", default=TASK_NAME)
     parser.add_argument("--save-videos", type=int, default=0)
     parser.add_argument("--video-fps", type=int, default=10)
-    parser.add_argument("--repeat-seed", action="store_true",
-                        help="If set, every episode uses --start-seed (same "
-                             "asset layout, different stochastic rollouts). "
-                             "Otherwise episode i uses --start-seed + i.")
-    parser.add_argument("--mode", choices=["argmax", "softmax"], default="argmax",
+    parser.add_argument("--mode", choices=["argmax", "softmax", "final"], default="argmax",
                         help="Selection over all --n-samples candidates. "
                              "argmax: pick the highest-verifier-value sample. "
                              "softmax: sample index ~ softmax(values / temp), "
@@ -656,36 +1186,16 @@ def main() -> None:
     parser.add_argument("--viz-q-episodes", type=int, default=0,
                         help="When --viz-q is set, only collect/save the "
                              "render npz for the first K episodes (the same "
-                             "seeds across every N cell, since episode i uses "
-                             "start_seed+i). 0 = all episodes (legacy). Set to "
+                             "split seeds across every N cell). 0 = all. Set to "
                              "e.g. 10 to keep full success-rate stats over all "
                              "--num-episodes while saving render data for just "
                              "the first 10 fixed-seed episodes.")
-    parser.add_argument("--tcont", type=float, default=None,
-                        help="Noise level in [0,1] for the noise-conditioned "
-                             "(tmrl) policy. Maps to DDPM timestep "
-                             "round(tcont*(T-1)). 0.0 = clean obs. Ignored by "
-                             "the tunable_corruption policies, which don't take "
-                             "a tcont input. Default: policy's eval default "
-                             "(0.0 / clean for the noise-conditioned policy).")
     parser.add_argument("--n-samples", type=int, default=None,
                         help="Number of search samples per replan; selection "
                              "(argmax/softmax) runs over all of them. "
                              "Default: policy.max_actions. Values > max_actions "
                              "are supported — predict_n_actions slides a fixed "
                              "(max_actions-1) context window.")
-    parser.add_argument("--stochastic-sampling", action="store_true",
-                        help="Legacy behavior: do NOT seed the diffusion "
-                             "candidate sampling, so the N candidates vary "
-                             "run-to-run. Default (off): candidate sampling "
-                             "is seeded per-replan from f(episode_seed, t) for "
-                             "reproducible candidates. (Softmax selection stays "
-                             "stochastic in either case.)")
-    parser.add_argument("--sample-seed-base", type=int, default=0,
-                        help="Offset added into the per-replan candidate-"
-                             "sampling seed. Change to draw a different "
-                             "deterministic realization of the candidate sets. "
-                             "Ignored under --stochastic-sampling.")
     parser.add_argument("--score-window", choices=["last", "executed"],
                         default="last",
                         help="Which action(s) the verifier scores per "
@@ -705,7 +1215,26 @@ def main() -> None:
                         help="Geometric discount on later chunk steps: step t is "
                              "weighted by score_discount**t before sum/mean. "
                              "Default: use the checkpoint's baked value (1.0).")
+    parser.add_argument("--obs-corruption", choices=["as_trained", "clean"],
+                        default="as_trained",
+                        help="as_trained: apply the policy's trained obs corruption at "
+                             "eval (seeded per episode). clean: feed uncorrupted obs. "
+                             "Only affects policies trained with a fixed "
+                             "obs_noise_level.")
+    parser.add_argument("--eval-obs-noise-level", type=float, default=None,
+                        help="BC only: noise the policy's low-dim state obs at rollout with "
+                             "the fixed-level DDPM obs-noise schedule (100 steps, beta "
+                             "1e-3->2e-2; level x -> t=round(x*99)). One draw per replan "
+                             "shared by all N candidates; the verifier sees clean obs. "
+                             "Default: off.")
     args = parser.parse_args()
+
+    # Fix every global stream up front; the per-episode candidate / selection / obs-noise
+    # draws are seeded separately, so nothing here depends on which episodes ran before.
+    import random as _random
+    _random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
 
     device = torch.device(args.device)
     if device.type == "cuda" and not torch.cuda.is_available():
@@ -722,6 +1251,9 @@ def main() -> None:
         try:
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
+            # TF32 changes matmul results with the GPU generation and batch shape.
+            torch.backends.cuda.matmul.allow_tf32 = False
+            torch.backends.cudnn.allow_tf32 = False
             torch.use_deterministic_algorithms(True, warn_only=True)
             print("[eval] deterministic torch kernels ON (cudnn.deterministic, use_deterministic_algorithms)")
         except Exception as _e:
@@ -730,6 +1262,14 @@ def main() -> None:
     policy, cfg = load_policy(
         checkpoint=args.checkpoint, device=device, use_ema=not args.no_ema,
     )
+    if hasattr(policy, "corrupt_obs_eval"):
+        policy.corrupt_obs_eval = (args.obs_corruption == "as_trained")
+        print(f"[eval] obs corruption: {args.obs_corruption} (policy corrupt_obs="
+              f"{getattr(policy, 'corrupt_obs', None)}, obs_noise_level="
+              f"{getattr(policy, 'obs_noise_level', None)})")
+    elif args.obs_corruption == "clean":
+        raise ValueError(f"--obs-corruption clean: {type(policy).__name__} has no "
+                         f"corrupt_obs_eval switch")
     # Inference-time override of how many predicted-horizon steps are executed
     # per replan. The policy ALWAYS predicts the full horizon; n_action_steps
     # only sets the executed window [n_obs_steps-1 : +n_action_steps] (and, for
@@ -792,7 +1332,16 @@ def main() -> None:
         _instr = _os.environ.get("VERIFIER_INSTRUCTION", "put the eggplant in the basket")
         _img_key = _os.environ.get("VERIFIER_IMAGE_KEY", "agentview_image")
         _vtype = _os.environ.get("VERIFIER_TYPE", "robomonkey").lower()
-        if _vtype == "dqc":
+        if _vtype in ("veritas", "veritas_metric", "veritas_pixel_gripper", "veritas_subtask"):
+            # Veritas pixel-waypoint verifier: scores the FULL predicted chunk's
+            # end-effector endpoint against the live tracker's upcoming waypoints
+            # (targets injected per replan by VeritasTrackerWrapper below).
+            _verifier = _build_veritas_verifier(n_action_steps=policy.n_action_steps)
+            _os.environ.setdefault("BC_VERIFIER_SCORE", "full")
+            print(f"[eval] BC verifier = Veritas pixel-waypoint "
+                  f"(scale={_verifier.action_pos_scale}, k={_verifier.lookahead_k}, "
+                  f"BC_VERIFIER_SCORE={_os.environ.get('BC_VERIFIER_SCORE')})")
+        elif _vtype == "dqc":
             # DQC Q-function verifier (JAX, in-process). Scores each executed
             # action against the current frame; BCSearchWrapper aggregates the
             # per-step Q-values (BC_VERIFIER_AGG, default discounted_sum here).
@@ -832,14 +1381,18 @@ def main() -> None:
                 keep_jpegs=False,
                 health_check=True,
             )
-        if _vtype == "dqc":
-            # DQC eval: candidate count = N_SAMPLES (default 16), no 128 floor.
+        if _vtype in ("dqc", "veritas", "veritas_metric", "veritas_pixel_gripper", "veritas_subtask"):
+            # DQC/Veritas eval: candidate count = N_SAMPLES (default 16), no 128 floor.
             _max_actions = int(_os.environ.get("N_SAMPLES", "16"))
         else:
             _max_actions = max(128, int(_os.environ.get("N_SAMPLES", "128")))
         policy = BCSearchWrapper(policy, _verifier, max_actions=_max_actions)
         print(f"[eval] BC mode: wrapped with in-process verifier "
               f"(instruction={_instr!r}, max_actions={_max_actions})")
+        if args.eval_obs_noise_level is not None:
+            policy.eval_obs_noise_level = float(args.eval_obs_noise_level)
+            print(f"[eval] eval-only state obs noise: level={policy.eval_obs_noise_level} "
+                  f"on {list(getattr(policy._base, 'obs_keys', ()))} (verifier sees clean obs)")
     else:
         # Native search policy (predict_n_actions + baked verifier). Optionally
         # swap the baked LLaVA verifier for the DQC Q-critic so the
@@ -847,7 +1400,15 @@ def main() -> None:
         # of DQC Q-values. Enabled with VERIFIER_TYPE=dqc; the score_window
         # block below sets score_indices to the executed chunk on it.
         import os as _os
-        if (_os.environ.get("VERIFIER_TYPE", "robomonkey").lower() == "dqc"
+        if (_os.environ.get("VERIFIER_TYPE", "robomonkey").lower() == "veritas"
+                or (_os.environ.get("VERIFIER_TYPE") is None
+                    and type(getattr(policy, "verifier", None)).__name__ in ("VeritasPixelVerifier", "VeritasStackPositionVerifier"))):
+            existing = getattr(policy, 'verifier', None)
+            if type(existing).__name__ not in ('VeritasPixelVerifier','VeritasStackPositionVerifier'):
+                existing = None
+            policy.verifier = _build_veritas_verifier(existing, policy.n_action_steps)
+            print("[eval] SEARCH verifier swapped -> Veritas pixel-waypoint")
+        elif (_os.environ.get("VERIFIER_TYPE", "robomonkey").lower() == "dqc"
                 and type(getattr(policy, "verifier", None)).__name__ != "DQCVerifier"):
             from diffusion_policy.policy.dqc_verifier import DQCVerifier
             _img_key = (getattr(policy.verifier, "image_obs_key", None)
@@ -909,7 +1470,11 @@ def main() -> None:
     # --score-agg, so the candidate value = quality of the whole executed
     # chunk. 'last': leave the verifier's single action_chunk_index (default).
     _score_indices = None
-    if _bc_wrapped:
+    if type(policy.verifier).__name__ in ('VeritasPixelVerifier', 'VeritasStackPositionVerifier', 'VeritasMetricVerifier', 'VeritasGripperVerifier'):
+        print(f"[eval] Veritas joint endpoint scoring: horizon={policy.verifier.horizon}, "
+              f"plan_done_mode={policy.verifier.plan_done_mode}, "
+              f"normalize={policy.verifier.normalize}")
+    elif _bc_wrapped:
         # BCSearchWrapper does its OWN per-step chunk scoring: it slices the
         # executed window itself and calls verifier.get_value with single-step
         # actions (shape (M, 1, 7)), aggregating via BC_VERIFIER_SCORE/AGG.
@@ -950,6 +1515,9 @@ def main() -> None:
 
     import simpler_env  # noqa: F401
     from simpler_env import make as make_env
+    if args.eval_obs_noise_level is not None and not hasattr(policy, "eval_obs_noise_level"):
+        raise ValueError(f"--eval-obs-noise-level is BC-only; {type(policy).__name__} "
+                         f"has its own obs corruption (--obs-corruption)")
     print(f"[eval] Creating SimplerEnv task: {args.task}")
     env = make_env(args.task)
     # make_env returns a gym TimeLimit wrapper; the SimplerEnv API lives on the
@@ -961,21 +1529,43 @@ def main() -> None:
     # so the true episode horizon equals max_steps.
     _override_env_timelimit(env, args.max_steps)
     print(f"[eval] TimeLimit overridden -> max_episode_steps={int(args.max_steps)} (was task-native 60/120)")
+    _veritas_wrap = _veritas_env_wrapper(args.task) \
+        if type(getattr(policy, "verifier", None)).__name__ in ("VeritasPixelVerifier", "VeritasStackPositionVerifier") else None
+    if _veritas_wrap is not None:
+        env = _veritas_wrap(env)
+        print(f"[eval] env wrapped with VeritasTrackerWrapper "
+              f"(plans: {_os.environ.get('VERITAS_PLAN_DIR')}, "
+              f"live={_os.environ.get('VERITAS_ALLOW_LIVE', '0')})")
     instr = (
         _base_env.get_language_instruction()
         if hasattr(_base_env, "get_language_instruction") else None
     ) or args.task
     print(f"[eval] instruction: {instr!r}")
 
+    explicit_seeds, seed_src, split_info, train_prov = _select_episode_seeds(args, cfg)
+    num_episodes = len(explicit_seeds)
+    _overlap, _train_src = (split_info["overlap_with_ckpt_train_seeds"],
+                            split_info["ckpt_train_seeds_source"])
+    print(f"[eval] split={split_info['split']} n={num_episodes} "
+          f"manifest={split_info.get('manifest')} "
+          f"ckpt_train_seeds={_train_src or 'unknown'} overlap={len(_overlap)}")
+
     output_dir = Path(args.output_dir) if args.output_dir else None
     done_by_seed: Dict[int, Dict[str, Any]] = {}
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
+        # Record the configuration BEFORE any episode runs, so a crashed or preempted eval
+        # still leaves behind what it was trying to measure.
+        _write_run_config(output_dir, args, extra={
+            "instruction": instr, "episodes": split_info,
+            "checkpoint_dataset_provenance": train_prov,
+            **_resume_identity(args)})
         _ep_path = output_dir / "episodes.jsonl"
         # Per-episode resume: load episodes already completed (keyed by seed)
         # before truncating, so a re-run with more episodes reuses them.
         if (not args.no_resume) and _ep_path.exists():
             _skipped_errors = 0
+            _skipped_mismatch = 0
             for _line in _ep_path.read_text().splitlines():
                 try:
                     _r = json.loads(_line)
@@ -992,15 +1582,26 @@ def main() -> None:
                 if _r.get("error") or _r.get("num_steps") in (None, 0):
                     _skipped_errors += 1
                     continue
+                # Only reuse episodes produced under the same seeding scheme, tiling and
+                # obs corruption; anything else is a different realization.
+                if any(_r.get(k) != v for k, v in _resume_identity(args).items()):
+                    _skipped_mismatch += 1
+                    continue
                 done_by_seed[int(_r["seed"])] = _r
-            if done_by_seed or _skipped_errors:
+            if done_by_seed or _skipped_errors or _skipped_mismatch:
                 print(f"[eval] resume: reusing {len(done_by_seed)} completed "
                       f"episode(s) from {_ep_path.name}"
                       + (f"; re-running {_skipped_errors} previously-errored "
-                         f"episode(s)" if _skipped_errors else ""))
+                         f"episode(s)" if _skipped_errors else "")
+                      + (f"; re-running {_skipped_mismatch} episode(s) from a different "
+                         f"seed scheme / TILED_ENVS / obs corruption"
+                         if _skipped_mismatch else ""))
         ep_log_file = open(_ep_path, "w")
     else:
         ep_log_file = None
+        print("[eval] WARNING: no --output-dir, so this run's configuration "
+              "(checkpoint, verifier, and ~20 scoring/selection env vars) is NOT "
+              "recorded anywhere. Its numbers will not be reproducible.")
 
     save_videos_n = max(0, int(args.save_videos))
     if save_videos_n > 0 and output_dir is None:
@@ -1018,15 +1619,6 @@ def main() -> None:
     if viz_q_dir is not None:
         viz_q_dir.mkdir(parents=True, exist_ok=True)
         print(f"[eval] viz_q enabled -> saving sampled actions to {viz_q_dir}")
-
-    if args.seeds:
-        explicit_seeds: Optional[List[int]] = [
-            int(s) for s in args.seeds.split(",") if s.strip()
-        ]
-        num_episodes = len(explicit_seeds)
-    else:
-        explicit_seeds = None
-        num_episodes = int(args.num_episodes)
 
     successes = 0
     truncations = 0
@@ -1046,31 +1638,24 @@ def main() -> None:
     if TILED > 1:
         import simpler_env  # noqa: F401
         from simpler_env import make as make_env
-        _all_seeds = ([int(s) for s in explicit_seeds] if explicit_seeds is not None
-                      else ([int(args.start_seed)] * num_episodes if args.repeat_seed
-                            else [int(args.start_seed) + i for i in range(num_episodes)]))
-        tiled_envs = [env] + [make_env(args.task) for _ in range(TILED - 1)]
+        _all_seeds = list(explicit_seeds)
+        tiled_envs = [env] + [
+            (_veritas_wrap(make_env(args.task)) if _veritas_wrap is not None else make_env(args.task))
+            for _ in range(TILED - 1)]
         print(f"[eval] TILED mode: {TILED} parallel envs over {num_episodes} episodes", flush=True)
         for b in range(0, num_episodes, TILED):
             bseeds = _all_seeds[b:b + TILED]
             res = rollout_episodes_tiled(
                 tiled_envs[:len(bseeds)], policy, cfg, device, bseeds, int(args.max_steps),
                 str(instr), mode=str(args.mode), n_samples=args.n_samples,
-                softmax_temp=float(args.softmax_temp), tcont=args.tcont,
-                deterministic_sampling=(not args.stochastic_sampling),
-                sample_seed_base=int(args.sample_seed_base))
+                softmax_temp=float(args.softmax_temp))
             tiled_eps.extend(res)
             print(f"[eval]   tiled batch {b//TILED+1}: seeds {bseeds} -> "
                   f"succ={[int(r['success']) for r in res]} steps={[r['num_steps'] for r in res]}",
                   flush=True)
 
     for i in range(num_episodes):
-        if explicit_seeds is not None:
-            ep_seed = explicit_seeds[i]
-        elif args.repeat_seed:
-            ep_seed = int(args.start_seed)
-        else:
-            ep_seed = int(args.start_seed) + i
+        ep_seed = int(explicit_seeds[i])
         capture = (i < save_videos_n)
         # Cap render-data collection to the first K episodes (same fixed seeds
         # across every N cell). Keeps SR over all episodes but avoids dumping
@@ -1108,9 +1693,6 @@ def main() -> None:
                     mode=str(args.mode), viz_q=ep_viz_q,
                     n_samples=args.n_samples,
                     softmax_temp=float(args.softmax_temp),
-                    tcont=args.tcont,
-                    deterministic_sampling=(not args.stochastic_sampling),
-                    sample_seed_base=int(args.sample_seed_base),
                 )
         except Exception as e:
             print(f"[eval] episode {i} (seed={ep_seed}) raised: {e!r}")
@@ -1123,12 +1705,22 @@ def main() -> None:
             # hard instead. We do NOT write a record for this seed, so on the
             # next launch resume reuses the good episodes and re-runs this one
             # (and the rest) in a fresh process.
+            # Same for a live Gemini plan that never arrived (overload outlasting every
+            # retry): the episode never started, so it is not a task failure.
+            if "live Gemini planning failed" in str(e) or "metric verifier:" in str(e):
+                print(f"[eval] FATAL: no Gemini plan for seed={ep_seed}; aborting run "
+                      f"without logging a failure. Re-launch to resume.", flush=True)
+                if ep_log_file is not None:
+                    ep_log_file.flush()
+                raise
             if "CUDA error" in str(e) or "device-side assert" in str(e):
                 print(f"[eval] FATAL: CUDA context corrupted at seed={ep_seed}; "
                       f"aborting run without logging phantom failures. "
                       f"Re-launch to resume the remaining seeds.", flush=True)
                 if ep_log_file is not None:
                     ep_log_file.flush()
+                raise
+            if os.environ.get("VERIFIER_TYPE") in ("veritas", "veritas_metric", "veritas_pixel_gripper", "veritas_subtask") or type(policy.verifier).__name__ == "VeritasStackPositionVerifier":
                 raise
             ep = {"success": False, "truncated": False, "num_steps": 0,
                   "obj_goal_dist_final": None, "obj_goal_dist_min": None,
@@ -1172,8 +1764,15 @@ def main() -> None:
                 extra_proj["cam_T_wc"] = ep["cam_T_wc"]
             if ep.get("base_pose_world") is not None:
                 extra_proj["base_pose_world"] = ep["base_pose_world"]
+            if type(policy.verifier).__name__ == 'VeritasMetricVerifier':
+                extra_proj['verifier_action_pos_scale'] = np.asarray(
+                    policy.verifier.action_pos_scale if policy.verifier.action_pos_scale is not None else [1.,1.,1.],
+                    dtype=np.float32)
             np.savez_compressed(
                 npz_path,
+                **{'policy_obs__' + k: np.stack([b['policy_obs'][k] for b in br])
+                   for k in br[0]['policy_obs']},
+                candidate_actions_full=np.stack([b['candidate_actions_full'] for b in br]),
                 seed=np.int32(ep_seed),
                 ep_idx=np.int32(i),
                 success=np.int32(int(ep["success"])),
@@ -1237,14 +1836,20 @@ def main() -> None:
                 "ep_idx": i,
                 "seed": ep_seed,
                 "success": ep["success"],
+                "success_while_grasped": ep.get("success_while_grasped"),
                 "truncated": ep["truncated"],
                 "num_steps": ep["num_steps"],
                 "obj_goal_dist_final": ep.get("obj_goal_dist_final"),
                 "obj_goal_dist_min": ep.get("obj_goal_dist_min"),
                 "duration_s": durations[-1],
+                **_resume_identity(args),
+                **seed_src.get(ep_seed, {}),
             }
+            if ep.get("subtasks") is not None:ep_compact["subtasks"]=ep["subtasks"]
             if ep.get("init_state") is not None:
                 ep_compact["init_state"] = ep["init_state"]
+            if ep.get("veritas") is not None:
+                ep_compact["veritas"] = ep["veritas"]
             if ep_selected_indices:
                 ep_compact["selected_indices"] = ep_selected_indices
             if ep_selected_values:
@@ -1270,14 +1875,11 @@ def main() -> None:
         "task": args.task,
         "instruction": str(instr),
         "num_episodes": int(num_episodes),
-        "start_seed": int(args.start_seed),
-        "seeds": ([int(s) for s in explicit_seeds] if explicit_seeds is not None else None),
+        "split": split_info["split"],
+        "seeds": [int(x) for x in explicit_seeds],
         "max_steps": int(args.max_steps),
         "use_ema": (not args.no_ema),
         "mode": str(args.mode),
-        "tcont": (float(args.tcont) if args.tcont is not None else None),
-        "deterministic_sampling": (not args.stochastic_sampling),
-        "sample_seed_base": int(args.sample_seed_base),
         "score_window": str(args.score_window),
         "score_indices": _score_indices,
         "score_agg": str(getattr(policy.verifier, "score_agg", args.score_agg)),

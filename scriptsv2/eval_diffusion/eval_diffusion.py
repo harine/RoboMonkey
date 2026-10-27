@@ -420,8 +420,16 @@ def load_policy(checkpoint: str, device: torch.device, use_ema: bool):
     state = state_dicts[src_key]
 
     missing, unexpected = policy.load_state_dict(state, strict=False)
+    # strict=False only so a swapped verifier (VERIFIER_TYPE=dqc) can differ from the
+    # baked one. A missing POLICY weight would silently evaluate a randomly-initialized
+    # module, so refuse.
+    missing_policy = [k for k in missing if not k.startswith("verifier.")]
+    if missing_policy:
+        raise RuntimeError(
+            f"checkpoint is missing {len(missing_policy)} policy weight(s) "
+            f"(e.g. {missing_policy[:3]}); the rebuilt architecture does not match it")
     if missing:
-        print(f"[eval]   missing keys: {len(missing)} (e.g. {missing[:3]})")
+        print(f"[eval]   missing verifier keys: {len(missing)} (e.g. {missing[:3]})")
     if unexpected:
         print(f"[eval]   unexpected keys: {len(unexpected)} (e.g. {unexpected[:3]})")
 
@@ -903,7 +911,6 @@ _BON_SAMPLER_REGISTRY: Dict[str, Any] = {
     "SearchPolicy": _sample_search_policy_action,
     "SearchPolicyRoboMonkey": _sample_search_policy_action,
     "SearchPolicyRoboMonkeyDiffusion": _sample_search_policy_action,
-    "SearchPolicyRoboMonkeyDiffusionNoiseCond": _sample_search_policy_action,
 }
 
 

@@ -5,20 +5,24 @@
 #
 # Usage
 # -----
-#   bash scriptsv2/eval_search/eval_search.sh <checkpoint> [num_episodes] [output_dir]
+#   bash scriptsv2/eval_search/eval_search.sh <checkpoint> [num_episodes|all] [output_dir]
 #
 # Examples
 # --------
 #   bash scriptsv2/eval_search/eval_search.sh \
 #       /home/harine/diffusion_policy/data/outputs/2026.05.11/17.40.43_robomonkey_eggplant_search_state_corrupt_robomonkey_eggplant_state/checkpoints/latest.ckpt \
-#       100 \
+#       all \
 #       data/eval/eggplant_search_state_corrupt
 #
 # Env vars (override on cmdline):
 #   DEVICE        (default: cuda:0)
-#   START_SEED    (default: 1000)
-#   SEEDS         (default: unset; comma-separated explicit seeds override
-#                 START_SEED and num_episodes)
+#   SPLIT_FILE    (default: the checkpoint's task.dataset.split_file) split manifest
+#                 (diffusion_policy/diffusion_policy/config/splits/simpler/<task>/...)
+#   SPLIT         (default: test; SPLIT_NAME is an alias) which list of the manifest
+#                 (test|val|train) is rolled out from its episodes' seeds
+#   SEEDS         (default: unset; comma-separated explicit seeds override the manifest)
+#   VERIFIER_TYPE=veritas needs VERITAS_CAMERA_FILE + VERITAS_PLAN_DIR
+#                 (+ VERITAS_ACTION_POS_SCALE=null|"[x,y,z]", VERITAS_ALLOW_LIVE=0|1)
 #   MAX_STEPS     (default: 120)
 #   USE_EMA       (default: 1; set 0 to use raw model weights)
 #   SAVE_VIDEOS   (default: 0; save MP4s for the first N episodes)
@@ -36,7 +40,7 @@
 set -euo pipefail
 
 CKPT="${1:-}"
-NUM_EPISODES="${2:-100}"
+NUM_EPISODES="${2:-all}"          # cap on the split's seeds; 'all' = every seed
 OUT_DIR_ARG="${3:-}"
 
 if [[ -z "$CKPT" ]]; then
@@ -57,8 +61,9 @@ else
 fi
 
 DEVICE="${DEVICE:-cuda:0}"
-START_SEED="${START_SEED:-1000}"
+SPLIT="${SPLIT_NAME:-${SPLIT:-test}}"  # which list of the manifest to roll out
 SEEDS="${SEEDS:-}"
+SPLIT_FILE="${SPLIT_FILE:-}"      # empty = the checkpoint's own split manifest
 MAX_STEPS="${MAX_STEPS:-120}"
 USE_EMA="${USE_EMA:-1}"
 CONDA_ENV="${CONDA_ENV:-simpler_env}"
@@ -72,16 +77,11 @@ VIZ_Q_EPISODES="${VIZ_Q_EPISODES:-0}"  # when VIZ_Q=1, only save render npz for
                                   # the first K episodes (0 = all). The first K
                                   # episodes use the same seeds across every N.
 N_SAMPLES="${N_SAMPLES:-}"        # empty = use policy.max_actions
-REPEAT_SEED="${REPEAT_SEED:-0}"   # 1 = every episode uses START_SEED
-TCONT="${TCONT:-}"                # noise level [0,1] for the noise-conditioned
-                                  # (tmrl) policy; empty = policy eval default
-STOCHASTIC_SAMPLING="${STOCHASTIC_SAMPLING:-0}"  # 1 = legacy un-seeded diffusion
-                                  # candidate sampling (varies run-to-run).
-                                  # Default 0 = candidate sampling seeded
-                                  # per-replan from f(episode_seed, t) for
-                                  # reproducible candidates. (Softmax selection
-                                  # stays stochastic regardless.)
-SAMPLE_SEED_BASE="${SAMPLE_SEED_BASE:-0}"  # offset into the per-replan seed
+OBS_CORRUPTION="${OBS_CORRUPTION:-as_trained}"  # as_trained | clean: whether a policy
+                                  # trained with a fixed obs_noise_level sees that
+                                  # (seeded) corruption at eval, or clean obs.
+EVAL_OBS_NOISE_LEVEL="${EVAL_OBS_NOISE_LEVEL:-}"  # BC only: eval-only state obs noise
+                                  # level (empty = off); see --eval-obs-noise-level.
 SCORE_WINDOW="${SCORE_WINDOW:-executed}"  # 'executed' = verifier scores each
                                   # executed action step (steps start..start+
                                   # n_action_steps) and aggregates (RoboMonkey-
@@ -102,10 +102,21 @@ export MUJOCO_GL=${MUJOCO_GL:-osmesa}
 export PYOPENGL_PLATFORM=${PYOPENGL_PLATFORM:-osmesa}
 export DISPLAY=""
 
+# Deterministic numerics for the policy (cuBLAS) and the JAX verifier (XLA). Both must be
+# set before CUDA / XLA initialize, so they live here rather than in eval_search.py.
+export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
+case " ${XLA_FLAGS:-} " in
+  *xla_gpu_deterministic_ops*) ;;
+  *) export XLA_FLAGS="--xla_gpu_deterministic_ops=true ${XLA_FLAGS:-}" ;;
+esac
+# Full-precision (non-TF32) matmuls in the JAX DQC critic, read by jax.config at import.
+export JAX_DEFAULT_MATMUL_PRECISION="${JAX_DEFAULT_MATMUL_PRECISION:-float32}"
+
 # Loader path for bitsandbytes (CUDA-13 libnvJitLink under the conda env)
 export LD_LIBRARY_PATH="${HOME}/miniconda3/envs/${CONDA_ENV}/lib:${LD_LIBRARY_PATH:-}"
 
 DP_ROOT="${DIFFUSION_POLICY_ROOT:-${repo_root:-/home/harine/RoboMonkey}/diffusion_policy}"
+export DIFFUSION_POLICY_ROOT="$DP_ROOT"   # else eval_diffusion.py prepends a stale checkout
 export PYTHONPATH="${DP_ROOT}:${PYTHONPATH:-}"
 
 full_path="$(realpath "$0")"
@@ -133,25 +144,21 @@ if [[ "$VIZ_Q" == "1" ]]; then
         EXTRA_FLAGS+=(--viz-q-episodes "$VIZ_Q_EPISODES")
     fi
 fi
-if [[ "$REPEAT_SEED" == "1" ]]; then
-    EXTRA_FLAGS+=(--repeat-seed)
-fi
 if [[ -n "$SEEDS" ]]; then
     EXTRA_FLAGS+=(--seeds "$SEEDS")
+else
+    EXTRA_FLAGS+=(--split "$SPLIT")
+    [[ -n "$SPLIT_FILE" ]] && EXTRA_FLAGS+=(--split-file "$SPLIT_FILE")
+fi
+if [[ "$NUM_EPISODES" != "all" ]]; then
+    EXTRA_FLAGS+=(--num-episodes "$NUM_EPISODES")
 fi
 if [[ -n "$N_SAMPLES" ]]; then
     EXTRA_FLAGS+=(--n-samples "$N_SAMPLES")
 fi
-if [[ -n "$TCONT" ]]; then
-    EXTRA_FLAGS+=(--tcont "$TCONT")
-fi
-if [[ "$STOCHASTIC_SAMPLING" == "1" ]]; then
-    EXTRA_FLAGS+=(--stochastic-sampling)
-fi
-if [[ -n "$SAMPLE_SEED_BASE" && "$SAMPLE_SEED_BASE" != "0" ]]; then
-    EXTRA_FLAGS+=(--sample-seed-base "$SAMPLE_SEED_BASE")
-fi
 EXTRA_FLAGS+=(--score-window "$SCORE_WINDOW")
+EXTRA_FLAGS+=(--obs-corruption "$OBS_CORRUPTION")
+if [[ -n "$EVAL_OBS_NOISE_LEVEL" ]]; then EXTRA_FLAGS+=(--eval-obs-noise-level "$EVAL_OBS_NOISE_LEVEL"); fi
 if [[ -n "$SCORE_AGG" ]]; then EXTRA_FLAGS+=(--score-agg "$SCORE_AGG"); fi
 if [[ -n "$SCORE_DISCOUNT" ]]; then EXTRA_FLAGS+=(--score-discount "$SCORE_DISCOUNT"); fi
 
@@ -164,9 +171,9 @@ echo "  output_dir   : $OUT_DIR"
 echo "  device       : $DEVICE"
 echo "  use_ema      : $USE_EMA"
 if [[ -n "$SEEDS" ]]; then
-    echo "  seeds        : $SEEDS  (overrides start_seed + num_episodes)"
+    echo "  seeds        : $SEEDS  (explicit, overrides SPLIT)"
 else
-    echo "  start_seed   : $START_SEED"
+    echo "  split        : ${SPLIT_FILE:-<checkpoint split_file>} [$SPLIT]"
 fi
 echo "  max_steps    : $MAX_STEPS"
 echo "  save_videos  : $SAVE_VIDEOS  (fps=$VIDEO_FPS)"
@@ -175,11 +182,9 @@ if [[ "$MODE" == "softmax" ]]; then
     echo "  softmax_temp : $SOFTMAX_TEMP"
 fi
 echo "  n_samples    : ${N_SAMPLES:-<policy.max_actions>}"
-if [[ "$STOCHASTIC_SAMPLING" == "1" ]]; then
-    echo "  sampling     : stochastic (legacy, un-seeded candidates)"
-else
-    echo "  sampling     : deterministic candidates (seed base=$SAMPLE_SEED_BASE)"
-fi
+echo "  sampling     : seeded per (episode seed, t)"
+echo "  obs_corrupt  : $OBS_CORRUPTION"
+echo "  obs_noise    : ${EVAL_OBS_NOISE_LEVEL:-off}  (BC eval-only state noise)"
 echo "  score_window : $SCORE_WINDOW (agg=${SCORE_AGG:-<baked from ckpt>}, discount=${SCORE_DISCOUNT:-<baked>})"
 echo "  viz_q        : $VIZ_Q"
 echo "============================================================"
@@ -193,8 +198,6 @@ else
 fi
 "${XVFB[@]}" python "$dir_path/eval_search.py" \
         --checkpoint "$CKPT" \
-        --num-episodes "$NUM_EPISODES" \
-        --start-seed "$START_SEED" \
         --max-steps "$MAX_STEPS" \
         --device "$DEVICE" \
         --output-dir "$OUT_DIR" \

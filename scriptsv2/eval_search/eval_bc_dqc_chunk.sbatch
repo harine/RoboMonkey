@@ -20,7 +20,7 @@
 #   * USE_EMA=1 (BC trained with use_ema=True).
 #   * BC_SAMPLER selects ddim (trained, near-deterministic -> candidates collapse,
 #     BoN ~no-op) or ddpm (100-step ancestral -> diverse candidates).
-#   * MODE defaults to softmax (set MODE=argmax for best-of-N), seeds START_SEED..+NUM_EPISODES.
+#   * MODE defaults to softmax (set MODE=argmax for best-of-N), seeds from SPLIT (default test).
 # Runs in dqc_jax (simpler_env sim + JAX[DQC]).
 #   sbatch --export=ALL,CHECKPOINT=<bc ckpt>,BC_SAMPLER=ddpm,N_SAMPLES=4 eval_bc_dqc_chunk.sbatch
 # -----------------------------------------------------------------------------
@@ -30,10 +30,10 @@ cd "${SLURM_SUBMIT_DIR:-/mmfs1/home/harine/RoboMonkey}"
 
 BC_SAMPLER="${BC_SAMPLER:-ddpm}"
 N_SAMPLES="${N_SAMPLES:-4}"
-NUM_EPISODES="${NUM_EPISODES:-50}"
-START_SEED="${START_SEED:-1000}"
+NUM_EPISODES="${NUM_EPISODES:-all}"
+SPLIT="${SPLIT:-test}"
 N_ACTION_STEPS="${N_ACTION_STEPS:-4}"     # rollout 4 (predict 8)
-OUT_DIR="${OUT_DIR:-data/eval/bc_dqc_chunk/bcH8_chunk8_predh8_roll4_${BC_SAMPLER}_n${N_SAMPLES}_seed${START_SEED}_ep${NUM_EPISODES}}"
+OUT_DIR="${OUT_DIR:-data/eval/bc_dqc_chunk/bcH8_chunk8_predh8_roll4_${BC_SAMPLER}_n${N_SAMPLES}_${SPLIT}_ep${NUM_EPISODES}}"
 mkdir -p data/eval/bc_dqc_chunk "$OUT_DIR"
 
 export DIFFUSION_POLICY_ROOT="${DIFFUSION_POLICY_ROOT:-$SLURM_SUBMIT_DIR/diffusion_policy}"
@@ -53,14 +53,14 @@ export BC_CHUNK_FROM_PRED=1                # score full predicted 8-chunk, rollo
 
 echo "[bc_dqcchunk] host=$(hostname) ckpt=$CHECKPOINT"
 echo "[bc_dqcchunk] sampler=$BC_SAMPLER N=$N_SAMPLES rollout=$N_ACTION_STEPS chunk_from_pred=1 mode=${MODE:-softmax} softmax_temp=${SOFTMAX_TEMP:-1.0}"
-echo "[bc_dqcchunk] seeds=${START_SEED}..$((START_SEED+NUM_EPISODES-1)) episodes=$NUM_EPISODES -> $OUT_DIR"
+echo "[bc_dqcchunk] split=$SPLIT episodes=$NUM_EPISODES -> $OUT_DIR"
 
 _t0=$(date +%s)
 CONDA_ENV="${CONDA_ENV:-dqc_jax}" DEVICE=cuda:0 \
   MODE="${MODE:-softmax}" SOFTMAX_TEMP="${SOFTMAX_TEMP:-1.0}" SCORE_WINDOW=last \
   BC_SAMPLER="$BC_SAMPLER" \
   N_SAMPLES="$N_SAMPLES" N_ACTION_STEPS="$N_ACTION_STEPS" \
-  START_SEED="$START_SEED" MAX_STEPS="${MAX_STEPS:-120}" USE_EMA="${USE_EMA:-1}" \
+  SPLIT="$SPLIT" MAX_STEPS="${MAX_STEPS:-120}" USE_EMA="${USE_EMA:-1}" \
   TASK="${TASK:-widowx_put_eggplant_in_basket}" \
   SAVE_VIDEOS="${SAVE_VIDEOS:-0}" VIDEO_FPS="${VIDEO_FPS:-10}" \
   VIZ_Q="${VIZ_Q:-0}" VIZ_Q_EPISODES="${VIZ_Q_EPISODES:-0}" \
