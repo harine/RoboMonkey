@@ -1,0 +1,21 @@
+{
+  "report_url": "https://wandb.ai/l2sml/simpler_veritas_h16/reports/Simpler-verifier-trials-eggplant-and-stack-2026-10-04--VmlldzoxODA1NTg1Mg",
+  "run": "g77u93ji",
+  "plots": [
+    {
+      "key": "plots/eggplant_uniform_argmax",
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/veritas_h16_20261002/report_sweeps_20261008/eggplant_uniform_argmax.png",
+      "caption": "Eggplant ST uniform: argmax, every 10k checkpoint"
+    },
+    {
+      "key": "plots/eggplant_uniform_final",
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/veritas_h16_20261002/report_sweeps_20261008/eggplant_uniform_final.png",
+      "caption": "Eggplant ST uniform: final, every 10k checkpoint"
+    },
+    {
+      "key": "plots/eggplant_bc20k_other_verifiers",
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/veritas_h16_20261002/report_sweeps_20261008/eggplant_bc20k_other_verifiers.png",
+      "caption": "Eggplant BC20k: scaling across alternative verifiers"
+    }
+  ]
+}

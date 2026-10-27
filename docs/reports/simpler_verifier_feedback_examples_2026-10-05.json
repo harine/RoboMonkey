@@ -1,0 +1,391 @@
+[
+  {
+    "verifier": "Metric v1",
+    "task": "eggplant",
+    "seed": 100028,
+    "t": 16,
+    "candidate": 12,
+    "score": -0.4864221513271332,
+    "components": {
+      "score": -0.4864221513271332,
+      "geometry": 0.17508389055728912,
+      "waypoint": 0.14004357159137726,
+      "gripper_cost": 0.875,
+      "vertical_cost": 0.0,
+      "phase": 1,
+      "endpoint_distance": 0.06969960033893585
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval/eggplant/n16/seed100028.jsonl"
+  },
+  {
+    "verifier": "Metric v2",
+    "task": "eggplant",
+    "seed": 100028,
+    "t": 16,
+    "candidate": 1,
+    "score": 0.2647196650505066,
+    "components": {
+      "score": 0.2647196650505066,
+      "geometry": 0.8303413391113281,
+      "waypoint": 0.18453018367290497,
+      "gripper_cost": 0.625,
+      "vertical_cost": 0.0,
+      "phase": 1,
+      "endpoint_distance": 0.007436738349497318
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_v2/eggplant/n16/seed100028.jsonl"
+  },
+  {
+    "verifier": "Pixel Veritas",
+    "task": "eggplant",
+    "seed": 100028,
+    "t": 8,
+    "candidate": 8,
+    "score": -1.9828717708587646,
+    "components": {
+      "score": -1.9828717708587646,
+      "pixel_cost": 208.20152282714844,
+      "normalized_pixel_cost": 1.9828717708587646,
+      "gripper_cost": 1.0,
+      "gripper_penalty": 0.0
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_w0/eggplant/n16/seed100028.jsonl"
+  },
+  {
+    "verifier": "Pixel + gripper",
+    "task": "eggplant",
+    "seed": 100028,
+    "t": 8,
+    "candidate": 8,
+    "score": -2.082871675491333,
+    "components": {
+      "score": -2.082871675491333,
+      "pixel_cost": 208.20152282714844,
+      "normalized_pixel_cost": 1.9828717708587646,
+      "gripper_cost": 1.0,
+      "gripper_penalty": 0.10000000149011612
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_w0p1/eggplant/n16/seed100028.jsonl"
+  },
+  {
+    "verifier": "Two subtasks + gripper",
+    "task": "eggplant",
+    "seed": 100028,
+    "t": 16,
+    "candidate": 38,
+    "score": -3.509711503982544,
+    "components": {
+      "score": -3.509711503982544,
+      "pixel_cost": 368.5196838378906,
+      "normalized_pixel_cost": 3.509711503982544,
+      "gripper_cost": 0.0,
+      "gripper_penalty": 0.0
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_grip_trial/eggplant/n16/seed100028.jsonl"
+  },
+  {
+    "verifier": "Metric v1",
+    "task": "stack",
+    "seed": 100069,
+    "t": 16,
+    "candidate": 15,
+    "score": -0.6522573232650757,
+    "components": {
+      "score": -0.6522573232650757,
+      "geometry": 0.0025242893025279045,
+      "waypoint": 0.012313583865761757,
+      "gripper_cost": 0.875,
+      "vertical_cost": 0.0,
+      "phase": 1,
+      "endpoint_distance": 0.2392718344926834
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval/stack/n16/seed100069.jsonl"
+  },
+  {
+    "verifier": "Metric v2",
+    "task": "stack",
+    "seed": 100069,
+    "t": 16,
+    "candidate": 15,
+    "score": 0.37972012162208557,
+    "components": {
+      "score": 0.37972012162208557,
+      "geometry": 0.44355514645576477,
+      "waypoint": 0.017988305538892746,
+      "gripper_cost": 0.0,
+      "vertical_cost": 0.0,
+      "phase": 1,
+      "endpoint_distance": 0.03251732513308525
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_v2/stack/n16/seed100069.jsonl"
+  },
+  {
+    "verifier": "Pixel Veritas",
+    "task": "stack",
+    "seed": 100067,
+    "t": 8,
+    "candidate": 14,
+    "score": -4.088759899139404,
+    "components": {
+      "score": -4.088759899139404,
+      "pixel_cost": 429.31976318359375,
+      "normalized_pixel_cost": 4.088759899139404,
+      "gripper_cost": 0.875,
+      "gripper_penalty": 0.0
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_w0/stack/n16/seed100067.jsonl"
+  },
+  {
+    "verifier": "Pixel + gripper",
+    "task": "stack",
+    "seed": 100067,
+    "t": 8,
+    "candidate": 14,
+    "score": -4.178688049316406,
+    "components": {
+      "score": -4.178688049316406,
+      "pixel_cost": 429.57470703125,
+      "normalized_pixel_cost": 4.091187953948975,
+      "gripper_cost": 0.875,
+      "gripper_penalty": 0.08749999850988388
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_w0p1/stack/n16/seed100067.jsonl"
+  },
+  {
+    "verifier": "Two subtasks + gripper",
+    "task": "stack",
+    "seed": 100067,
+    "t": 16,
+    "candidate": 28,
+    "score": -3.2242443561553955,
+    "components": {
+      "score": -3.2242443561553955,
+      "pixel_cost": 338.545654296875,
+      "normalized_pixel_cost": 3.2242443561553955,
+      "gripper_cost": 0.0,
+      "gripper_penalty": 0.0
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_grip_trial/stack/n16/seed100067.jsonl"
+  },
+  {
+    "verifier": "Carry-only",
+    "task": "eggplant",
+    "seed": 100028,
+    "t": 16,
+    "candidate": 38,
+    "score": -4.267974376678467,
+    "components": {
+      "score": -4.267974376678467,
+      "pixel_cost": 368.5196838378906,
+      "normalized_pixel_cost": 3.509711503982544,
+      "gripper_cost": 0.0,
+      "gripper_penalty": 0.0,
+      "task_score": -0.7582627534866333,
+      "task_approach_progress": -0.7582627534866333,
+      "task_carry_penalty": 0.0,
+      "task_separation_rise_penalty": 0.0,
+      "task_reopen_penalty": 0.0,
+      "predicted_max_gripper_object_distance": 0.14802636206150055,
+      "trajectory_score": -3.509711503982544
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_strict_trial/eggplant/n16/seed100028.jsonl"
+  },
+  {
+    "verifier": "Two subtasks + full filter",
+    "task": "eggplant",
+    "seed": 100028,
+    "t": 16,
+    "candidate": 38,
+    "score": -3.3032457577089547,
+    "components": {
+      "score": -3.453263521194458,
+      "pixel_cost": 362.5926513671875,
+      "normalized_pixel_cost": 3.453263521194458,
+      "gripper_cost": 0.0,
+      "gripper_penalty": 0.0
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_full_trial_30ep/eggplant/n16/seed100028.jsonl",
+    "trajectory_score": -3.453263521194458,
+    "task_feedback": {
+      "passed": false,
+      "score": 0.1500177634855033,
+      "checks": {
+        "success": false,
+        "finite": true,
+        "net_decrease": true,
+        "bounded_backtrack": true,
+        "carry_proximity": true,
+        "grasp_observed": true,
+        "first_try": true,
+        "no_reopen": true,
+        "contact_continuity": true,
+        "no_separation_rise": true
+      },
+      "final_distance": 0.12347561120986938,
+      "net_ratio": 0.5888533619178823,
+      "backtrack_m": 0.003206208348274231,
+      "backtrack_tolerance_m": 0.01258129298686981,
+      "carry_max_m": 0.01986893266439438,
+      "first_contact": 17,
+      "closest_placement": 24,
+      "closes_to_contact": 1,
+      "reopen_runs": 0,
+      "max_contact_gap": 0,
+      "separation_rise_m": 1.7950311303138733e-05,
+      "eef_endpoint": [
+        -0.10984627157449722,
+        0.12402555346488953,
+        0.9686004519462585
+      ],
+      "object_endpoint": [
+        -0.12241712212562561,
+        0.1392519325017929,
+        0.9663856029510498
+      ]
+    },
+    "sim_trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_full_trial_30ep/eggplant/n16/seed100028_full_filter.jsonl"
+  },
+  {
+    "verifier": "Simulated Veritas + distance",
+    "task": "eggplant",
+    "seed": 100028,
+    "t": 16,
+    "candidate": 47,
+    "score": -1.1918728827353782,
+    "components": {
+      "score": -0.9095192551612854,
+      "pixel_cost": 95.49951934814453,
+      "normalized_pixel_cost": 0.9095192551612854,
+      "gripper_cost": 0.0,
+      "gripper_penalty": 0.0
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_sim_distance_trial_30ep/eggplant/n16/seed100028.jsonl",
+    "trajectory_score": -0.6206527352333069,
+    "task_feedback": {
+      "passed": false,
+      "score": 0.15883437069340886,
+      "checks": {
+        "success": false,
+        "finite": true,
+        "net_decrease": true,
+        "bounded_backtrack": true,
+        "carry_proximity": true,
+        "grasp_observed": true,
+        "first_try": true,
+        "no_reopen": true,
+        "contact_continuity": true,
+        "no_separation_rise": true
+      },
+      "final_distance": 0.11977813392877579,
+      "net_ratio": 0.5712201475020712,
+      "backtrack_m": 2.2351741790771484e-07,
+      "backtrack_tolerance_m": 0.01258129298686981,
+      "carry_max_m": 0.011046426370739937,
+      "first_contact": 17,
+      "closest_placement": 24,
+      "closes_to_contact": 1,
+      "reopen_runs": 0,
+      "max_contact_gap": 0,
+      "separation_rise_m": 0.00203081127256155,
+      "eef_endpoint": [
+        -0.10135268419981003,
+        0.10999517142772675,
+        0.9931539297103882
+      ],
+      "object_endpoint": [
+        -0.10635670274496078,
+        0.1197451651096344,
+        0.991767942905426
+      ],
+      "distance_score": -0.5712201475020712
+    },
+    "sim_trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_sim_distance_trial_30ep/eggplant/n16/seed100028_full_filter.jsonl"
+  },
+  {
+    "verifier": "Simulated Veritas + full filter",
+    "task": "eggplant",
+    "seed": 100080,
+    "t": 8,
+    "candidate": 41,
+    "score": -2.2567324386310252,
+    "components": {
+      "score": -3.269610643386841,
+      "pixel_cost": 343.3091125488281,
+      "normalized_pixel_cost": 3.269610643386841,
+      "gripper_cost": 0.0,
+      "gripper_penalty": 0.0
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_sim_full_trial_30ep/eggplant/n16/seed100080.jsonl",
+    "trajectory_score": -2.0269501209259033,
+    "task_feedback": {
+      "passed": false,
+      "score": -0.22978231770512214,
+      "checks": {
+        "success": false,
+        "finite": true,
+        "net_decrease": false,
+        "bounded_backtrack": false,
+        "carry_proximity": false,
+        "grasp_observed": false,
+        "first_try": true,
+        "no_reopen": true,
+        "contact_continuity": true,
+        "no_separation_rise": true
+      },
+      "final_distance": 0.22171886265277863,
+      "net_ratio": 1.1081197340894124,
+      "backtrack_m": 0.02163320779800415,
+      "backtrack_tolerance_m": 0.012005139291286469,
+      "carry_max_m": 0.03458666428923607,
+      "first_contact": null,
+      "closest_placement": 0,
+      "closes_to_contact": 0,
+      "reopen_runs": 0,
+      "max_contact_gap": 0,
+      "separation_rise_m": 0.0,
+      "eef_endpoint": [
+        -0.10929860174655914,
+        0.22394518554210663,
+        0.9691739678382874
+      ],
+      "object_endpoint": [
+        -0.11629856377840042,
+        0.2416754961013794,
+        0.9403144121170044
+      ]
+    },
+    "sim_trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_sim_full_trial_30ep/eggplant/n16/seed100080_full_filter.jsonl"
+  },
+  {
+    "verifier": "Four subtasks",
+    "task": "stack",
+    "seed": 100067,
+    "t": 16,
+    "candidate": 14,
+    "score": -1.9799896478652954,
+    "components": {
+      "score": -1.9799896478652954,
+      "pixel_cost": 200.02389526367188,
+      "normalized_pixel_cost": 1.9049896001815796,
+      "gripper_cost": 0.75,
+      "gripper_penalty": 0.07500000298023224
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_trial/stack/n16/seed100067.jsonl"
+  },
+  {
+    "verifier": "Two subtasks",
+    "task": "stack",
+    "seed": 100067,
+    "t": 16,
+    "candidate": 12,
+    "score": -3.909949541091919,
+    "components": {
+      "score": -3.909949541091919,
+      "pixel_cost": 400.0447082519531,
+      "normalized_pixel_cost": 3.8099496364593506,
+      "gripper_cost": 1.0,
+      "gripper_penalty": 0.10000000149011612
+    },
+    "trace": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_trial/stack/n16/seed100067.jsonl"
+  }
+]

@@ -1,0 +1,110 @@
+{
+  "report_url": "https://wandb.ai/l2sml/simpler_veritas_h16/reports/Simpler-verifier-trials-eggplant-and-stack-2026-10-04--VmlldzoxODA1NTg1Mg",
+  "embedding": "native MediaBrowser panels",
+  "layout": {
+    "w": 24,
+    "h": 16,
+    "report_width": "fluid"
+  },
+  "media": [
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/egg_bc_n1_seed100028.mp4",
+      "run": "go6moj84",
+      "key": "video/egg_bc_n1_seed100028",
+      "caption": "BC N1 \u00b7 seed 100028 \u00b7 success",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval/eggplant/n1/overlays/ep000_seed100028__N1_succ.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval/eggplant/n1/search_q/ep000_seed100028.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/egg_metric_v1_n16_seed100028.mp4",
+      "run": "go6moj84",
+      "key": "video/egg_metric_v1_n16_seed100028",
+      "caption": "Metric v1 N16 \u00b7 seed 100028 \u00b7 failure",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval/eggplant/n16/overlays/ep000_seed100028__N16_trunc.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval/eggplant/n16/search_q/ep000_seed100028.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/egg_pixel_n16_seed100028.mp4",
+      "run": "go6moj84",
+      "key": "video/egg_pixel_n16_seed100028",
+      "caption": "Pixel Veritas N16 \u00b7 seed 100028 \u00b7 success",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_w0/eggplant/n16/overlays/ep000_seed100028__N16_succ.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_w0/eggplant/n16/search_q/ep000_seed100028.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/egg_sim_full_n48_seed100080.mp4",
+      "run": "go6moj84",
+      "key": "video/egg_sim_full_n48_seed100080",
+      "caption": "Simulated Veritas + full filter N48 \u00b7 seed 100080 \u00b7 failure",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_sim_full_trial_30ep/eggplant/n16/overlays/ep002_seed100080__N48_trunc.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_sim_full_trial_30ep/eggplant/n16/search_q/ep002_seed100080.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/egg_subtask_n48_seed100028.mp4",
+      "run": "go6moj84",
+      "key": "video/egg_subtask_n48_seed100028",
+      "caption": "Two subtasks + gripper N48 \u00b7 seed 100028 \u00b7 transient success",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_grip_trial/eggplant/n16/overlays/ep000_seed100028__N48_succ.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_grip_trial/eggplant/n16/search_q/ep000_seed100028.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/stack_metric_v1_n16_seed100069.mp4",
+      "run": "go6moj84",
+      "key": "video/stack_metric_v1_n16_seed100069",
+      "caption": "Metric v1 N16 \u00b7 seed 100069 \u00b7 failure",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval/stack/n16/overlays/ep001_seed100069__N16_trunc.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval/stack/n16/search_q/ep001_seed100069.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/stack_metric_v2_n16_seed100069.mp4",
+      "run": "go6moj84",
+      "key": "video/stack_metric_v2_n16_seed100069",
+      "caption": "Metric v2 N16 \u00b7 seed 100069 \u00b7 success",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_v2/stack/n16/overlays/ep001_seed100069__N16_succ.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_v2/stack/n16/search_q/ep001_seed100069.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/stack_pixel_n16_seed100067.mp4",
+      "run": "go6moj84",
+      "key": "video/stack_pixel_n16_seed100067",
+      "caption": "Pixel Veritas N16 \u00b7 seed 100067 \u00b7 success",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_w0/stack/n16/overlays/ep000_seed100067__N16_succ.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_pixel_w0/stack/n16/search_q/ep000_seed100067.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/stack_gripper_n48_seed100067.mp4",
+      "run": "go6moj84",
+      "key": "video/stack_gripper_n48_seed100067",
+      "caption": "Two subtasks + gripper N48 \u00b7 seed 100067 \u00b7 failure",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_grip_trial/stack/n16/overlays/ep000_seed100067__N48_trunc.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/eval_subtask_two_grip_trial/stack/n16/search_q/ep000_seed100067.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/egg_original_st_n16_seed100080.mp4",
+      "run": "go6moj84",
+      "key": "video/egg_original_st_n16_seed100080",
+      "caption": "Uniform ST \u00b7 eggplant \u00b7 30k, argmax N16 \u00b7 seed 100080 \u00b7 success",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/veritas_h16_20261002/diagnostics_as_trained/eggplant_100_uniform_h16_s8_e8_seed42/step_0030000/argmax/n16/overlays/ep002_seed100080__N16_succ.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/veritas_h16_20261002/diagnostics_as_trained/eggplant_100_uniform_h16_s8_e8_seed42/step_0030000/argmax/n16/search_q/ep002_seed100080.npz"
+    },
+    {
+      "path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/metric_verifier_pilot_20261004/report_media_accessible_20261005/stack_original_st_n16_seed100069.mp4",
+      "run": "go6moj84",
+      "key": "video/stack_original_st_n16_seed100069",
+      "caption": "Uniform ST \u00b7 stack \u00b7 30k, argmax N16 \u00b7 seed 100069 \u00b7 failure",
+      "source_path": "/gscratch/robotics/harine/RoboMonkey_data/experiments/veritas_h16_20261002/diagnostics_as_trained/stack_100_uniform_h16_s8_e8_seed42/step_0030000/argmax/n16/overlays/ep001_seed100069__N16_trunc.mp4",
+      "npz_source": "/gscratch/robotics/harine/RoboMonkey_data/experiments/veritas_h16_20261002/diagnostics_as_trained/stack_100_uniform_h16_s8_e8_seed42/step_0030000/argmax/n16/search_q/ep001_seed100069.npz"
+    }
+  ],
+  "crop": {
+    "removed_right_pixels": 460,
+    "output_width": 872,
+    "output_height": 480
+  },
+  "accessibility": {
+    "palette": "cividis",
+    "selected": "thick white stroke",
+    "top_ranks": "numeric #1/#2/#3",
+    "coordinates": "omitted"
+  }
+}

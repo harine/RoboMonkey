@@ -535,9 +535,7 @@ ranking + speedup), `scriptsv2/bon/validate_kvprefix.py` (top-1 agreement).
 `scriptsv2/train_search/train_noise_sweep.sbatch` runs the 2-GPU parallel sweep;
 `train_one_1gpu.sbatch` runs a single config on one GPU, e.g.:
 ```bash
-# tmrl / noise_conditioned
-sbatch --account=weirdlab --partition=gpu-a40 --export=ALL,RUN_COND=1,LEVELS= \
-    scriptsv2/train_search/train_one_1gpu.sbatch
+# (the tmrl / noise_conditioned arm was removed on 2026-09-30; see git history)
 # tunable_corruption @ 0.4 (or 0.8)
 sbatch --account=weirdlab --partition=gpu-a40 --export=ALL,RUN_COND=0,LEVELS=0.4 \
     scriptsv2/train_search/train_one_1gpu.sbatch

@@ -1,0 +1,22 @@
+task,verifier,n_bc_samples,candidate_pool_size,episodes,successes,success_rate,notes
+eggplant,BC N=1 baseline,1,1,30,16,0.5333,baseline
+eggplant,metric plan v1,4,4,30,12,0.4,30 episodes; fresh Gemini plan and kinematic stage/gripper/co-motion metric
+eggplant,metric plan v1,16,16,30,12,0.4,same verifier/checkpoint/seeds
+eggplant,metric plan v2 calibrated,4,4,30,11,0.3667,calibrated scale/goal offsets and continuous carry target
+eggplant,metric plan v2 calibrated,16,16,30,12,0.4,same verifier/checkpoint/seeds
+eggplant,pixel waypoint Veritas gripper weight 0,4,4,30,19,0.6333,original pixel trajectory score
+eggplant,pixel waypoint Veritas gripper weight 0,16,16,30,11,0.3667,original pixel trajectory score
+eggplant,pixel waypoint + gripper penalty 0.1,4,4,30,19,0.6333,bounded normalized gripper term
+eggplant,pixel waypoint + gripper penalty 0.1,16,16,30,18,0.6,bounded normalized gripper term
+eggplant,two-subtask + simulated full filter,16,48,30,17,0.5667,16 BC proposals expanded to original/open/closed choices
+eggplant,sim pixel Veritas + basket distance,16,48,30,16,0.5333,simulated candidate scoring; expanded to 48 choices
+eggplant,sim pixel Veritas + full filter,16,48,30,12,0.4,simulated candidate scoring; expanded to 48 choices
+stack,BC N=1 baseline,1,1,30,18,0.6,baseline
+stack,metric plan v1,4,4,30,16,0.5333,30 episodes; fresh Gemini plan and kinematic stage/gripper/co-motion metric
+stack,metric plan v1,16,16,30,17,0.5667,same verifier/checkpoint/seeds
+stack,metric plan v2 calibrated,4,4,30,14,0.4667,calibrated scale/goal offsets and continuous carry target
+stack,metric plan v2 calibrated,16,16,30,20,0.6667,"4 paired gains, 2 losses vs BC; one-sided exact p=0.344"
+stack,pixel waypoint Veritas gripper weight 0,4,4,30,15,0.5,original pixel trajectory score
+stack,pixel waypoint Veritas gripper weight 0,16,16,30,19,0.6333,original pixel trajectory score
+stack,pixel waypoint + gripper penalty 0.1,4,4,30,15,0.5,bounded normalized gripper term
+stack,pixel waypoint + gripper penalty 0.1,16,16,30,18,0.6,bounded normalized gripper term
