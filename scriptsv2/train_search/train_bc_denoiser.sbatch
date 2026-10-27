@@ -41,6 +41,8 @@
 #   DATASET_DIR         training data dir (Sim2RealImageMultiDataset, *.zarr shards;
 #                       success_only filtering still applies)
 #                       (default: /gscratch/robotics/harine/data/eggplant_in_basket_complete)
+#   SPLIT_FILE          split manifest; its train/val lists replace the val_ratio split
+#                       (scriptsv2/train_search/submit_bc_splits.sh sets it)
 #   WANDB_ENTITY        (default: l2sml)
 #   WANDB_PROJECT       (default: BC_eggplant)
 #   WANDB_NAME          wandb run name (default: <arch>_pred${HORIZON}_roll${HORIZON/2})
@@ -61,6 +63,7 @@ LR_WARMUP_STEPS="${LR_WARMUP_STEPS:-500}"
 LR_MIN_RATIO="${LR_MIN_RATIO:-0.1}"
 RUN_NAME="${RUN_NAME:-eggplant_bc_${DENOISER}_h${HORIZON}}"
 DATASET_DIR="${DATASET_DIR:-/gscratch/robotics/harine/data/eggplant_in_basket_complete}"
+SPLIT_FILE="${SPLIT_FILE:-}"       # split manifest (config/splits/simpler/...): train/val episodes
 CONDA_ENV="${CONDA_ENV:-monkey-verifier}"
 WANDB_ENTITY="${WANDB_ENTITY:-l2sml}"
 WANDB_PROJECT="${WANDB_PROJECT:-BC_eggplant}"
@@ -84,7 +87,7 @@ echo "[sbatch] host=$(hostname) gpu=${CUDA_VISIBLE_DEVICES:-?}"
 echo "[sbatch] denoiser=$DENOISER horizon=$HORIZON (rollout=$((HORIZON/2))) n_obs_steps=$N_OBS_STEPS steps=$MAX_GRADIENT_STEPS"
 echo "[sbatch] lr: warmup=$LR_WARMUP_STEPS decay_to_floor_by=$LR_DECAY_STEPS min_ratio=$LR_MIN_RATIO"
 echo "[sbatch] run_dir=$RUN_DIR"
-echo "[sbatch] dataset_dir=$DATASET_DIR"
+echo "[sbatch] dataset_dir=$DATASET_DIR split_file=${SPLIT_FILE:-<val_ratio>}"
 echo "[sbatch] wandb: $WANDB_ENTITY/$WANDB_PROJECT name=$WANDB_NAME"
 nvidia-smi -L || true
 
@@ -110,6 +113,7 @@ python diffusion_policy/workspace/train_diffusion_unet_image_workspace.py \
     +training.max_gradient_steps="$MAX_GRADIENT_STEPS" \
     task.dataset.use_cache=true \
     task.dataset.dataset_dir="$DATASET_DIR" \
+    ${SPLIT_FILE:+task.dataset.split_file="$SPLIT_FILE"} \
     training.device=cuda:0 \
     +logging.entity="$WANDB_ENTITY" \
     logging.project="$WANDB_PROJECT" \

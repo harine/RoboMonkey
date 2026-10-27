@@ -75,6 +75,12 @@ python -c "import jax; print('   jax devices:', jax.devices())" 2>&1 | tail -1
 
 EXTRA=()
 [ -n "$TAGS" ] && EXTRA+=( "logging.tags=${TAGS}" )
+# Optional: validate on an external testset dir instead of a val_ratio split.
+# When set, all train demos are used for training (val_ratio forced to 0).
+VAL_DATASET_DIR="${VAL_DATASET_DIR:-}"
+if [ -n "$VAL_DATASET_DIR" ]; then
+    EXTRA+=( "+task.dataset.val_dataset_dir=${VAL_DATASET_DIR}" "task.dataset.val_ratio=0.0" )
+fi
 
 python diffusion_policy/workspace/train_mlp_image_workspace.py \
     --config-name="${CONFIG}" \
@@ -87,6 +93,8 @@ python diffusion_policy/workspace/train_mlp_image_workspace.py \
     policy.verifier.instruction="${INSTRUCTION}" \
     training.device=cuda:0 \
     training.num_epochs="${NUM_EPOCHS}" \
+    training.val_every="${VAL_EVERY:-10}" \
+    training.sample_every="${SAMPLE_EVERY:-10}" \
     +training.max_gradient_steps="${MAX_GRADIENT_STEPS}" \
     training.lr_scheduler="${LR_SCHEDULER}" \
     training.lr_warmup_steps="${LR_WARMUP_STEPS}" \
