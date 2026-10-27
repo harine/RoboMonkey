@@ -33,3 +33,8 @@ wandb/
 state0.zarr/
 simpler_env_jax_torch_pre_cuda.txt
 tmrl/
+
+# Symlinks into /gscratch (data, wandb runs, diagnostic videos)
+/data
+/wandb
+/simpler_veritas_videos
