@@ -1,0 +1,4214 @@
+{
+ "task": "stack",
+ "env_task": "widowx_stack_cube",
+ "dataset_dir": "/gscratch/robotics/harine/data/stack_cube_strict",
+ "zarr": "/gscratch/robotics/harine/data/stack_cube_strict/stack_strict.zarr",
+ "tol": 0.001,
+ "rule": "seed = 100000 + START_INDEX[shard] + src_episode",
+ "episodes": {
+  "0": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100000,
+   "src_shard": "state0.zarr",
+   "src_episode": 0,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "1": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100005,
+   "src_shard": "state0.zarr",
+   "src_episode": 5,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "2": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100012,
+   "src_shard": "state0.zarr",
+   "src_episode": 12,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "3": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100013,
+   "src_shard": "state0.zarr",
+   "src_episode": 13,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "4": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100028,
+   "src_shard": "state0.zarr",
+   "src_episode": 28,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "5": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100036,
+   "src_shard": "state0.zarr",
+   "src_episode": 36,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "6": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100045,
+   "src_shard": "state0.zarr",
+   "src_episode": 45,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "7": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100053,
+   "src_shard": "state0.zarr",
+   "src_episode": 53,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "8": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100067,
+   "src_shard": "state0.zarr",
+   "src_episode": 67,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "9": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100069,
+   "src_shard": "state0.zarr",
+   "src_episode": 69,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "10": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100074,
+   "src_shard": "state0.zarr",
+   "src_episode": 74,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "11": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100081,
+   "src_shard": "state0.zarr",
+   "src_episode": 81,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "12": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100084,
+   "src_shard": "state0.zarr",
+   "src_episode": 84,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "13": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100089,
+   "src_shard": "state0.zarr",
+   "src_episode": 89,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "14": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100097,
+   "src_shard": "state0.zarr",
+   "src_episode": 97,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "15": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100104,
+   "src_shard": "state0.zarr",
+   "src_episode": 104,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "16": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100133,
+   "src_shard": "state0.zarr",
+   "src_episode": 133,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "17": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100160,
+   "src_shard": "state0.zarr",
+   "src_episode": 160,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "18": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100162,
+   "src_shard": "state0.zarr",
+   "src_episode": 162,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "19": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100167,
+   "src_shard": "state0.zarr",
+   "src_episode": 167,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "20": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100180,
+   "src_shard": "state0.zarr",
+   "src_episode": 180,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "21": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100182,
+   "src_shard": "state0.zarr",
+   "src_episode": 182,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "22": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100188,
+   "src_shard": "state0.zarr",
+   "src_episode": 188,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "23": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100220,
+   "src_shard": "state0.zarr",
+   "src_episode": 220,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "24": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100221,
+   "src_shard": "state0.zarr",
+   "src_episode": 221,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "25": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100230,
+   "src_shard": "state0.zarr",
+   "src_episode": 230,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "26": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100243,
+   "src_shard": "state0.zarr",
+   "src_episode": 243,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "27": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100252,
+   "src_shard": "state0.zarr",
+   "src_episode": 252,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "28": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100257,
+   "src_shard": "state0.zarr",
+   "src_episode": 257,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "29": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100263,
+   "src_shard": "state0.zarr",
+   "src_episode": 263,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "30": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100266,
+   "src_shard": "state0.zarr",
+   "src_episode": 266,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "31": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100268,
+   "src_shard": "state0.zarr",
+   "src_episode": 268,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "32": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100269,
+   "src_shard": "state0.zarr",
+   "src_episode": 269,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "33": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100271,
+   "src_shard": "state0.zarr",
+   "src_episode": 271,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "34": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100303,
+   "src_shard": "state0.zarr",
+   "src_episode": 303,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "35": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100327,
+   "src_shard": "state0.zarr",
+   "src_episode": 327,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "36": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100335,
+   "src_shard": "state0.zarr",
+   "src_episode": 335,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "37": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100341,
+   "src_shard": "state0.zarr",
+   "src_episode": 341,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "38": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100361,
+   "src_shard": "state0.zarr",
+   "src_episode": 361,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "39": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100365,
+   "src_shard": "state0.zarr",
+   "src_episode": 365,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "40": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100376,
+   "src_shard": "state0.zarr",
+   "src_episode": 376,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "41": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100379,
+   "src_shard": "state0.zarr",
+   "src_episode": 379,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "42": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100394,
+   "src_shard": "state0.zarr",
+   "src_episode": 394,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "43": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100396,
+   "src_shard": "state0.zarr",
+   "src_episode": 396,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "44": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100397,
+   "src_shard": "state0.zarr",
+   "src_episode": 397,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "45": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100403,
+   "src_shard": "state0.zarr",
+   "src_episode": 403,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "46": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100416,
+   "src_shard": "state0.zarr",
+   "src_episode": 416,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "47": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100428,
+   "src_shard": "state0.zarr",
+   "src_episode": 428,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "48": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100433,
+   "src_shard": "state0.zarr",
+   "src_episode": 433,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "49": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100449,
+   "src_shard": "state0.zarr",
+   "src_episode": 449,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "50": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100450,
+   "src_shard": "state0.zarr",
+   "src_episode": 450,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "51": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100466,
+   "src_shard": "state0.zarr",
+   "src_episode": 466,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "52": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100477,
+   "src_shard": "state0.zarr",
+   "src_episode": 477,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "53": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100482,
+   "src_shard": "state0.zarr",
+   "src_episode": 482,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "54": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100487,
+   "src_shard": "state0.zarr",
+   "src_episode": 487,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "55": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100492,
+   "src_shard": "state0.zarr",
+   "src_episode": 492,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "56": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100498,
+   "src_shard": "state0.zarr",
+   "src_episode": 498,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "57": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100499,
+   "src_shard": "state0.zarr",
+   "src_episode": 499,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "58": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100503,
+   "src_shard": "state0.zarr",
+   "src_episode": 503,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "59": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100511,
+   "src_shard": "state0.zarr",
+   "src_episode": 511,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "60": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100520,
+   "src_shard": "state0.zarr",
+   "src_episode": 520,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "61": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100527,
+   "src_shard": "state0.zarr",
+   "src_episode": 527,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "62": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100538,
+   "src_shard": "state0.zarr",
+   "src_episode": 538,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "63": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100549,
+   "src_shard": "state0.zarr",
+   "src_episode": 549,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "64": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100563,
+   "src_shard": "state0.zarr",
+   "src_episode": 563,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "65": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100567,
+   "src_shard": "state0.zarr",
+   "src_episode": 567,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "66": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100572,
+   "src_shard": "state0.zarr",
+   "src_episode": 572,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "67": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100586,
+   "src_shard": "state0.zarr",
+   "src_episode": 586,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "68": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100587,
+   "src_shard": "state0.zarr",
+   "src_episode": 587,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "69": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100591,
+   "src_shard": "state0.zarr",
+   "src_episode": 591,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "70": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100593,
+   "src_shard": "state0.zarr",
+   "src_episode": 593,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "71": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100594,
+   "src_shard": "state0.zarr",
+   "src_episode": 594,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "72": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100604,
+   "src_shard": "state0.zarr",
+   "src_episode": 604,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "73": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100610,
+   "src_shard": "state0.zarr",
+   "src_episode": 610,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "74": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100617,
+   "src_shard": "state0.zarr",
+   "src_episode": 617,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "75": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100624,
+   "src_shard": "state0.zarr",
+   "src_episode": 624,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "76": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100627,
+   "src_shard": "state0.zarr",
+   "src_episode": 627,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "77": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100638,
+   "src_shard": "state0.zarr",
+   "src_episode": 638,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "78": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100650,
+   "src_shard": "state0.zarr",
+   "src_episode": 650,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "79": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100651,
+   "src_shard": "state0.zarr",
+   "src_episode": 651,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "80": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100653,
+   "src_shard": "state0.zarr",
+   "src_episode": 653,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "81": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100671,
+   "src_shard": "state0.zarr",
+   "src_episode": 671,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "82": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100674,
+   "src_shard": "state0.zarr",
+   "src_episode": 674,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "83": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100680,
+   "src_shard": "state0.zarr",
+   "src_episode": 680,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "84": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100681,
+   "src_shard": "state0.zarr",
+   "src_episode": 681,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "85": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100682,
+   "src_shard": "state0.zarr",
+   "src_episode": 682,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "86": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100684,
+   "src_shard": "state0.zarr",
+   "src_episode": 684,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "87": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100685,
+   "src_shard": "state0.zarr",
+   "src_episode": 685,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "88": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100688,
+   "src_shard": "state0.zarr",
+   "src_episode": 688,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "89": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100692,
+   "src_shard": "state0.zarr",
+   "src_episode": 692,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "90": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100699,
+   "src_shard": "state0.zarr",
+   "src_episode": 699,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "91": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100705,
+   "src_shard": "state0.zarr",
+   "src_episode": 705,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "92": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100710,
+   "src_shard": "state0.zarr",
+   "src_episode": 710,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "93": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100711,
+   "src_shard": "state0.zarr",
+   "src_episode": 711,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "94": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100712,
+   "src_shard": "state0.zarr",
+   "src_episode": 712,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "95": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100737,
+   "src_shard": "state0.zarr",
+   "src_episode": 737,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "96": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100748,
+   "src_shard": "state0.zarr",
+   "src_episode": 748,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "97": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100750,
+   "src_shard": "state0.zarr",
+   "src_episode": 750,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "98": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100764,
+   "src_shard": "state0.zarr",
+   "src_episode": 764,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "99": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100765,
+   "src_shard": "state0.zarr",
+   "src_episode": 765,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "100": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100783,
+   "src_shard": "state0.zarr",
+   "src_episode": 783,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "101": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100784,
+   "src_shard": "state0.zarr",
+   "src_episode": 784,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "102": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100786,
+   "src_shard": "state0.zarr",
+   "src_episode": 786,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "103": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100795,
+   "src_shard": "state0.zarr",
+   "src_episode": 795,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "104": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100797,
+   "src_shard": "state0.zarr",
+   "src_episode": 797,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "105": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100798,
+   "src_shard": "state0.zarr",
+   "src_episode": 798,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "106": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100810,
+   "src_shard": "state0.zarr",
+   "src_episode": 810,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "107": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100827,
+   "src_shard": "state0.zarr",
+   "src_episode": 827,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "108": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100833,
+   "src_shard": "state0.zarr",
+   "src_episode": 833,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "109": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100842,
+   "src_shard": "state0.zarr",
+   "src_episode": 842,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "110": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100843,
+   "src_shard": "state0.zarr",
+   "src_episode": 843,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "111": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100852,
+   "src_shard": "state0.zarr",
+   "src_episode": 852,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "112": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100855,
+   "src_shard": "state0.zarr",
+   "src_episode": 855,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "113": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100859,
+   "src_shard": "state0.zarr",
+   "src_episode": 859,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "114": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100870,
+   "src_shard": "state0.zarr",
+   "src_episode": 870,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "115": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100874,
+   "src_shard": "state0.zarr",
+   "src_episode": 874,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "116": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100876,
+   "src_shard": "state0.zarr",
+   "src_episode": 876,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "117": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100881,
+   "src_shard": "state0.zarr",
+   "src_episode": 881,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "118": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100886,
+   "src_shard": "state0.zarr",
+   "src_episode": 886,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "119": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100901,
+   "src_shard": "state0.zarr",
+   "src_episode": 901,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "120": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100906,
+   "src_shard": "state0.zarr",
+   "src_episode": 906,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "121": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100907,
+   "src_shard": "state0.zarr",
+   "src_episode": 907,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "122": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100919,
+   "src_shard": "state0.zarr",
+   "src_episode": 919,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "123": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100921,
+   "src_shard": "state0.zarr",
+   "src_episode": 921,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "124": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100929,
+   "src_shard": "state0.zarr",
+   "src_episode": 929,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "125": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100930,
+   "src_shard": "state0.zarr",
+   "src_episode": 930,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "126": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100940,
+   "src_shard": "state0.zarr",
+   "src_episode": 940,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "127": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100941,
+   "src_shard": "state0.zarr",
+   "src_episode": 941,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "128": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100945,
+   "src_shard": "state0.zarr",
+   "src_episode": 945,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "129": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100951,
+   "src_shard": "state0.zarr",
+   "src_episode": 951,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "130": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100955,
+   "src_shard": "state0.zarr",
+   "src_episode": 955,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "131": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100970,
+   "src_shard": "state0.zarr",
+   "src_episode": 970,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "132": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100983,
+   "src_shard": "state0.zarr",
+   "src_episode": 983,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "133": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100986,
+   "src_shard": "state0.zarr",
+   "src_episode": 986,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "134": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 100988,
+   "src_shard": "state0.zarr",
+   "src_episode": 988,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "135": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101003,
+   "src_shard": "state1.zarr",
+   "src_episode": 3,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "136": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101007,
+   "src_shard": "state1.zarr",
+   "src_episode": 7,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "137": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101015,
+   "src_shard": "state1.zarr",
+   "src_episode": 15,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "138": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101020,
+   "src_shard": "state1.zarr",
+   "src_episode": 20,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "139": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101023,
+   "src_shard": "state1.zarr",
+   "src_episode": 23,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "140": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101027,
+   "src_shard": "state1.zarr",
+   "src_episode": 27,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "141": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101067,
+   "src_shard": "state1.zarr",
+   "src_episode": 67,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "142": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101076,
+   "src_shard": "state1.zarr",
+   "src_episode": 76,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "143": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101083,
+   "src_shard": "state1.zarr",
+   "src_episode": 83,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "144": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101095,
+   "src_shard": "state1.zarr",
+   "src_episode": 95,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "145": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101101,
+   "src_shard": "state1.zarr",
+   "src_episode": 101,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "146": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101111,
+   "src_shard": "state1.zarr",
+   "src_episode": 111,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "147": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101115,
+   "src_shard": "state1.zarr",
+   "src_episode": 115,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "148": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101116,
+   "src_shard": "state1.zarr",
+   "src_episode": 116,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "149": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101127,
+   "src_shard": "state1.zarr",
+   "src_episode": 127,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "150": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101137,
+   "src_shard": "state1.zarr",
+   "src_episode": 137,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "151": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101140,
+   "src_shard": "state1.zarr",
+   "src_episode": 140,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "152": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101162,
+   "src_shard": "state1.zarr",
+   "src_episode": 162,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "153": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101167,
+   "src_shard": "state1.zarr",
+   "src_episode": 167,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "154": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101174,
+   "src_shard": "state1.zarr",
+   "src_episode": 174,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "155": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101176,
+   "src_shard": "state1.zarr",
+   "src_episode": 176,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "156": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101181,
+   "src_shard": "state1.zarr",
+   "src_episode": 181,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "157": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101186,
+   "src_shard": "state1.zarr",
+   "src_episode": 186,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "158": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101198,
+   "src_shard": "state1.zarr",
+   "src_episode": 198,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "159": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101199,
+   "src_shard": "state1.zarr",
+   "src_episode": 199,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "160": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101203,
+   "src_shard": "state1.zarr",
+   "src_episode": 203,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "161": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101216,
+   "src_shard": "state1.zarr",
+   "src_episode": 216,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "162": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101220,
+   "src_shard": "state1.zarr",
+   "src_episode": 220,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "163": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101227,
+   "src_shard": "state1.zarr",
+   "src_episode": 227,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "164": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101233,
+   "src_shard": "state1.zarr",
+   "src_episode": 233,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "165": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101239,
+   "src_shard": "state1.zarr",
+   "src_episode": 239,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "166": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101242,
+   "src_shard": "state1.zarr",
+   "src_episode": 242,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "167": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101247,
+   "src_shard": "state1.zarr",
+   "src_episode": 247,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "168": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101249,
+   "src_shard": "state1.zarr",
+   "src_episode": 249,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "169": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101255,
+   "src_shard": "state1.zarr",
+   "src_episode": 255,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "170": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101257,
+   "src_shard": "state1.zarr",
+   "src_episode": 257,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "171": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101259,
+   "src_shard": "state1.zarr",
+   "src_episode": 259,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "172": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101267,
+   "src_shard": "state1.zarr",
+   "src_episode": 267,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "173": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101272,
+   "src_shard": "state1.zarr",
+   "src_episode": 272,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "174": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101275,
+   "src_shard": "state1.zarr",
+   "src_episode": 275,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "175": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101277,
+   "src_shard": "state1.zarr",
+   "src_episode": 277,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "176": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101278,
+   "src_shard": "state1.zarr",
+   "src_episode": 278,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "177": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101285,
+   "src_shard": "state1.zarr",
+   "src_episode": 285,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "178": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101286,
+   "src_shard": "state1.zarr",
+   "src_episode": 286,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "179": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101288,
+   "src_shard": "state1.zarr",
+   "src_episode": 288,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "180": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101292,
+   "src_shard": "state1.zarr",
+   "src_episode": 292,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "181": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101316,
+   "src_shard": "state1.zarr",
+   "src_episode": 316,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "182": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101330,
+   "src_shard": "state1.zarr",
+   "src_episode": 330,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "183": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101331,
+   "src_shard": "state1.zarr",
+   "src_episode": 331,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "184": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101345,
+   "src_shard": "state1.zarr",
+   "src_episode": 345,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "185": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101357,
+   "src_shard": "state1.zarr",
+   "src_episode": 357,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "186": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101360,
+   "src_shard": "state1.zarr",
+   "src_episode": 360,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "187": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101362,
+   "src_shard": "state1.zarr",
+   "src_episode": 362,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "188": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101367,
+   "src_shard": "state1.zarr",
+   "src_episode": 367,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "189": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101372,
+   "src_shard": "state1.zarr",
+   "src_episode": 372,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "190": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101375,
+   "src_shard": "state1.zarr",
+   "src_episode": 375,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "191": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101378,
+   "src_shard": "state1.zarr",
+   "src_episode": 378,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "192": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101379,
+   "src_shard": "state1.zarr",
+   "src_episode": 379,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "193": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101390,
+   "src_shard": "state1.zarr",
+   "src_episode": 390,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "194": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101392,
+   "src_shard": "state1.zarr",
+   "src_episode": 392,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "195": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101402,
+   "src_shard": "state1.zarr",
+   "src_episode": 402,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "196": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101416,
+   "src_shard": "state1.zarr",
+   "src_episode": 416,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "197": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101429,
+   "src_shard": "state1.zarr",
+   "src_episode": 429,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "198": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101441,
+   "src_shard": "state1.zarr",
+   "src_episode": 441,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "199": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101457,
+   "src_shard": "state1.zarr",
+   "src_episode": 457,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "200": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101484,
+   "src_shard": "state1.zarr",
+   "src_episode": 484,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "201": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101485,
+   "src_shard": "state1.zarr",
+   "src_episode": 485,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "202": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101486,
+   "src_shard": "state1.zarr",
+   "src_episode": 486,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "203": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101487,
+   "src_shard": "state1.zarr",
+   "src_episode": 487,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "204": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101491,
+   "src_shard": "state1.zarr",
+   "src_episode": 491,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "205": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101498,
+   "src_shard": "state1.zarr",
+   "src_episode": 498,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "206": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101504,
+   "src_shard": "state1.zarr",
+   "src_episode": 504,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "207": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101505,
+   "src_shard": "state1.zarr",
+   "src_episode": 505,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "208": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101516,
+   "src_shard": "state1.zarr",
+   "src_episode": 516,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "209": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101523,
+   "src_shard": "state1.zarr",
+   "src_episode": 523,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "210": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101525,
+   "src_shard": "state1.zarr",
+   "src_episode": 525,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "211": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101531,
+   "src_shard": "state1.zarr",
+   "src_episode": 531,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "212": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101533,
+   "src_shard": "state1.zarr",
+   "src_episode": 533,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "213": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101538,
+   "src_shard": "state1.zarr",
+   "src_episode": 538,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "214": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101539,
+   "src_shard": "state1.zarr",
+   "src_episode": 539,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "215": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101542,
+   "src_shard": "state1.zarr",
+   "src_episode": 542,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "216": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101551,
+   "src_shard": "state1.zarr",
+   "src_episode": 551,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "217": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101554,
+   "src_shard": "state1.zarr",
+   "src_episode": 554,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "218": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101561,
+   "src_shard": "state1.zarr",
+   "src_episode": 561,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "219": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101565,
+   "src_shard": "state1.zarr",
+   "src_episode": 565,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "220": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101570,
+   "src_shard": "state1.zarr",
+   "src_episode": 570,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "221": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101599,
+   "src_shard": "state1.zarr",
+   "src_episode": 599,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "222": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101612,
+   "src_shard": "state1.zarr",
+   "src_episode": 612,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "223": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101613,
+   "src_shard": "state1.zarr",
+   "src_episode": 613,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "224": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101615,
+   "src_shard": "state1.zarr",
+   "src_episode": 615,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "225": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101616,
+   "src_shard": "state1.zarr",
+   "src_episode": 616,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "226": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101619,
+   "src_shard": "state1.zarr",
+   "src_episode": 619,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "227": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101644,
+   "src_shard": "state1.zarr",
+   "src_episode": 644,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "228": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101645,
+   "src_shard": "state1.zarr",
+   "src_episode": 645,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "229": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101650,
+   "src_shard": "state1.zarr",
+   "src_episode": 650,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "230": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101656,
+   "src_shard": "state1.zarr",
+   "src_episode": 656,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "231": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101660,
+   "src_shard": "state1.zarr",
+   "src_episode": 660,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "232": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101672,
+   "src_shard": "state1.zarr",
+   "src_episode": 672,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "233": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101677,
+   "src_shard": "state1.zarr",
+   "src_episode": 677,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "234": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101696,
+   "src_shard": "state1.zarr",
+   "src_episode": 696,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "235": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101702,
+   "src_shard": "state1.zarr",
+   "src_episode": 702,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "236": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101707,
+   "src_shard": "state1.zarr",
+   "src_episode": 707,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "237": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101719,
+   "src_shard": "state1.zarr",
+   "src_episode": 719,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "238": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101730,
+   "src_shard": "state1.zarr",
+   "src_episode": 730,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "239": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101732,
+   "src_shard": "state1.zarr",
+   "src_episode": 732,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "240": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101746,
+   "src_shard": "state1.zarr",
+   "src_episode": 746,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "241": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101752,
+   "src_shard": "state1.zarr",
+   "src_episode": 752,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "242": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101755,
+   "src_shard": "state1.zarr",
+   "src_episode": 755,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "243": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101757,
+   "src_shard": "state1.zarr",
+   "src_episode": 757,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "244": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101760,
+   "src_shard": "state1.zarr",
+   "src_episode": 760,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "245": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101764,
+   "src_shard": "state1.zarr",
+   "src_episode": 764,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "246": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101775,
+   "src_shard": "state1.zarr",
+   "src_episode": 775,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "247": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101776,
+   "src_shard": "state1.zarr",
+   "src_episode": 776,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "248": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101786,
+   "src_shard": "state1.zarr",
+   "src_episode": 786,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "249": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101792,
+   "src_shard": "state1.zarr",
+   "src_episode": 792,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "250": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101804,
+   "src_shard": "state1.zarr",
+   "src_episode": 804,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "251": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101806,
+   "src_shard": "state1.zarr",
+   "src_episode": 806,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "252": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101810,
+   "src_shard": "state1.zarr",
+   "src_episode": 810,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "253": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101812,
+   "src_shard": "state1.zarr",
+   "src_episode": 812,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "254": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101814,
+   "src_shard": "state1.zarr",
+   "src_episode": 814,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "255": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101815,
+   "src_shard": "state1.zarr",
+   "src_episode": 815,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "256": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101836,
+   "src_shard": "state1.zarr",
+   "src_episode": 836,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "257": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101850,
+   "src_shard": "state1.zarr",
+   "src_episode": 850,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "258": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101855,
+   "src_shard": "state1.zarr",
+   "src_episode": 855,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "259": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101863,
+   "src_shard": "state1.zarr",
+   "src_episode": 863,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "260": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101866,
+   "src_shard": "state1.zarr",
+   "src_episode": 866,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "261": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101868,
+   "src_shard": "state1.zarr",
+   "src_episode": 868,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "262": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101869,
+   "src_shard": "state1.zarr",
+   "src_episode": 869,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "263": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101872,
+   "src_shard": "state1.zarr",
+   "src_episode": 872,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "264": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101877,
+   "src_shard": "state1.zarr",
+   "src_episode": 877,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "265": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101889,
+   "src_shard": "state1.zarr",
+   "src_episode": 889,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "266": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101890,
+   "src_shard": "state1.zarr",
+   "src_episode": 890,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "267": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101895,
+   "src_shard": "state1.zarr",
+   "src_episode": 895,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "268": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101925,
+   "src_shard": "state1.zarr",
+   "src_episode": 925,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "269": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101926,
+   "src_shard": "state1.zarr",
+   "src_episode": 926,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "270": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101928,
+   "src_shard": "state1.zarr",
+   "src_episode": 928,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "271": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101933,
+   "src_shard": "state1.zarr",
+   "src_episode": 933,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "272": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101955,
+   "src_shard": "state1.zarr",
+   "src_episode": 955,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "273": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101973,
+   "src_shard": "state1.zarr",
+   "src_episode": 973,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "274": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101976,
+   "src_shard": "state1.zarr",
+   "src_episode": 976,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "275": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101986,
+   "src_shard": "state1.zarr",
+   "src_episode": 986,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "276": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101987,
+   "src_shard": "state1.zarr",
+   "src_episode": 987,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "277": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101988,
+   "src_shard": "state1.zarr",
+   "src_episode": 988,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "278": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101994,
+   "src_shard": "state1.zarr",
+   "src_episode": 994,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  },
+  "279": {
+   "ee": 0.0,
+   "source": 0.0,
+   "target": 0.0,
+   "ok": true,
+   "tol": 0.001,
+   "seed": 101997,
+   "src_shard": "state1.zarr",
+   "src_episode": 997,
+   "scene_ok": true,
+   "object_offset_mm": {
+    "source": 0.0,
+    "target": 0.0
+   }
+  }
+ },
+ "n_ok": 280,
+ "n": 280,
+ "criterion": "ok = end effector reproduces within tol; object offsets (eggplant/basket settle after reset, up to ~8 mm) are environment stochasticity and recorded, not gated. scene_ok = all three within tol (used for the test pools).",
+ "n_scene_ok": 280
+}
