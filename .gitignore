@@ -38,3 +38,4 @@ tmrl/
 /data
 /wandb
 /simpler_veritas_videos
+!scriptsv2/data/
